@@ -1455,10 +1455,42 @@ function renderPrevOnlyForecast(prev) {
       newbieNote = '先月が入会初月の可能性。初月費用（約' + initFee.toLocaleString() + '円）は翌月以降は発生しません';
     }
 
+    // 兄弟まとめ請求の可能性チェック
+    // 先月CSVに同姓の別生徒がいれば可能性を示唆。_siblingExcl登録済みならより確度が高い注記。
+    var siblingNote = '';
+    var thisName = getName(row);
+    var normThisName = normalizeName(thisName);
+    var thisSei = (row['姓'] || '').replace(/[　\s]/g, '');
+    if (thisSei) {
+      // 先月CSVに同姓の別生徒を探す
+      var sameSeiNames = prev.filter(function(r2) {
+        var sei2 = (r2['姓'] || '').replace(/[　\s]/g, '');
+        return sei2 === thisSei && normalizeName(getName(r2)) !== normThisName;
+      }).map(function(r2){ return getName(r2); });
+
+      if (sameSeiNames.length > 0) {
+        // _siblingExcl に登録済みか確認
+        var normThisN = normalizeName(thisName);
+        var isRegistered = false;
+        sameSeiNames.forEach(function(sn) {
+          if (_siblingExcl.has(siblingExclKey(thisName, sn)) ||
+              _siblingExcl.has(siblingExclKey(normThisN, normalizeName(sn)))) {
+            isRegistered = true;
+          }
+        });
+        var sibLabel = sameSeiNames.join('・');
+        if (isRegistered) {
+          siblingNote = '同姓の兄弟生（' + sibLabel + '）あり、まとめ請求ペアとして登録済み。翌月予測は単体計算のため実際と異なる可能性があります';
+        } else {
+          siblingNote = '同姓の生徒（' + sibLabel + '）が先月CSVにいます。兄弟まとめ請求の場合、翌月予測は実際と異なる可能性があります';
+        }
+      }
+    }
+
     rows.push({
       name: getName(row), grade: g, classroom: clsLabel,
       prevAmt: prevAmt, nextAmt: nextExp.total, diff: diff, breakdown: breakdown,
-      leaveNote: leaveNote, newbieNote: newbieNote
+      leaveNote: leaveNote, newbieNote: newbieNote, siblingNote: siblingNote
     });
   });
 
@@ -1492,6 +1524,7 @@ function renderPrevOnlyForecast(prev) {
     var noteHtml = '';
     if (r.leaveNote) noteHtml += '<div style="color:#dc2626;font-size:11px;">⚠ ' + escHtml(r.leaveNote) + '</div>';
     if (r.newbieNote) noteHtml += '<div style="color:#d97706;font-size:11px;">⚠ ' + escHtml(r.newbieNote) + '</div>';
+    if (r.siblingNote) noteHtml += '<div style="color:#7c3aed;font-size:11px;">⚠ ' + escHtml(r.siblingNote) + '</div>';
     html += '<tr style="' + rowBg + '">'
       + '<td style="white-space:nowrap;border-left:3px solid ' + borderColor + ';">' + escHtml(r.name) + '</td>'
       + '<td style="white-space:nowrap;">' + gradeLabel(r.grade) + '</td>'
