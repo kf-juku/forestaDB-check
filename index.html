@@ -1,0 +1,2568 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>フォレスタDB 請求書チェックツール</title>
+<style>
+:root {
+  --crimson: #E87000; --crimson-dark: #c45e00;
+  --crimson-light: #fff5e8; --crimson-mid: #f4b56a;
+  --surface: #f5f6f8; --surface2: #eef0f3; --border: #dde1e8;
+  --text: #1e2a38; --text-muted: #586474; --text-light: #94a3b8;
+  --blue: #4a7fc1; --blue-light: #ddeaf8; --blue-dark: #2c5890;
+  --green: #2e9e6b; --green-light: #d4f0e4; --green-dark: #1a6046;
+  --amber: #c88b1a; --amber-light: #fdf0d5; --amber-dark: #7a5010;
+  --purple: #7060b8; --purple-light: #ece8fb; --purple-dark: #483d88;
+  --gray: #6b7280; --gray-light: #f0f1f3;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.07);
+  --shadow: 0 4px 12px rgba(0,0,0,0.07);
+  --radius: 10px;
+}
+body {
+  font-family: 'Hiragino Sans','Noto Sans JP','Yu Gothic',sans-serif;
+  background: var(--surface); margin: 0; font-size: 14px;
+  color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased;
+}
+.app-header {
+  background: var(--crimson); color: white;
+  padding: 12px 24px; display: flex; align-items: center; gap: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+}
+.app-header h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+.app-header .sub { font-size: 11px; opacity: 0.65; margin-left: auto; letter-spacing: 0.01em; }
+.tab-bar {
+  display: flex; border-bottom: 2px solid var(--border);
+  background: white; padding: 0 16px;
+}
+.tab-btn {
+  padding: 10px 18px; font-size: 13px; font-weight: 600;
+  color: var(--text-muted); background: none; border: none;
+  cursor: pointer; border-bottom: 2px solid transparent;
+  margin-bottom: -2px; font-family: inherit; transition: all 0.1s; white-space: nowrap;
+}
+.tab-btn:hover { color: var(--text); background: var(--surface); }
+.tab-btn.active { color: var(--crimson); border-bottom-color: var(--crimson); font-weight: 700; }
+.tab-panel { display: none; padding: 20px; }
+.tab-panel.active { display: block; }
+.card {
+  background: white; border-radius: var(--radius);
+  box-shadow: var(--shadow-sm); padding: 16px 20px; margin-bottom: 12px;
+}
+.card-title {
+  font-size: 13px; font-weight: 700; color: var(--text-muted);
+  margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+}
+.upload-area {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 24px; text-align: center; cursor: pointer;
+  transition: all 0.15s; background: white;
+}
+.upload-area:hover, .upload-area.drag-over {
+  border-color: var(--crimson); background: var(--crimson-light);
+}
+.upload-area input[type=file] { display: none; }
+.upload-label { font-size: 13px; color: var(--text-muted); }
+.upload-label strong { color: var(--crimson); cursor: pointer; }
+.file-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--green-light); color: var(--green-dark);
+  border: 1px solid #6ee7b7; border-radius: 20px;
+  padding: 4px 12px; font-size: 12px; font-weight: 600; margin-top: 8px;
+}
+.btn-primary {
+  background: var(--crimson); color: white; border: none;
+  border-radius: 7px; padding: 8px 18px; font-size: 13px;
+  font-weight: 600; cursor: pointer; font-family: inherit;
+  transition: background 0.15s;
+}
+.btn-primary:hover { background: var(--crimson-dark); }
+.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+.preview-table {
+  width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px;
+}
+.preview-table th {
+  background: var(--surface2); padding: 6px 10px;
+  text-align: left; font-weight: 600; color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+.preview-table td {
+  padding: 5px 10px; border-bottom: 1px solid var(--surface2);
+}
+.preview-table tr:last-child td { border-bottom: none; }
+.badge { font-size: 10px; font-weight: 700; border-radius: 20px; padding: 2px 8px; white-space: nowrap; }
+.badge-blue   { background: var(--blue-light);   color: var(--blue-dark); }
+.badge-green  { background: var(--green-light);  color: var(--green-dark); }
+.badge-amber  { background: #E87000; color: #ffffff; }
+.badge-confirm{ background: #ffffff; color: #854d0e; border: 1px solid #eab308; }
+.badge-red    { background: #fee2e2;             color: #991b1b; }
+.badge-gray   { background: var(--gray-light);   color: var(--gray); }
+.badge-purple { background: var(--purple-light); color: var(--purple-dark); }
+#toast {
+  position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+  background: #1e293b; color: white; padding: 10px 20px;
+  border-radius: 20px; font-size: 13px; font-weight: 600;
+  z-index: 9999; opacity: 0; transition: opacity 0.2s;
+  pointer-events: none; white-space: nowrap;
+}
+#toast.show { opacity: 1; }
+#mini-toast {
+  position: fixed; right: 20px; bottom: 24px;
+  background: #1e293b; color: white; padding: 7px 16px;
+  border-radius: 8px; font-size: 12px; font-weight: 600;
+  z-index: 9998; opacity: 0; transition: opacity 0.2s;
+  pointer-events: none; max-width: 280px;
+}
+#mini-toast.show { opacity: 1; }
+.spinner {
+  display: inline-block; width: 14px; height: 14px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: white; border-radius: 50%;
+  animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty-state {
+  text-align: center; padding: 40px 20px; color: var(--text-light);
+}
+.empty-state-icon { font-size: 28px; margin-bottom: 8px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* 編集テーブル */
+.edit-table { width:100%; border-collapse:collapse; font-size:12px; }
+.edit-table th {
+  background:var(--surface2); padding:6px 8px; text-align:left;
+  font-weight:700; color:var(--text-muted); border-bottom:1px solid var(--border);
+  white-space:nowrap;
+}
+.edit-table td { padding:4px 6px; border-bottom:1px solid var(--surface2); vertical-align:middle; }
+.edit-table tr:hover td { background:var(--surface); }
+.edit-table input[type=text], .edit-table input[type=number] {
+  width:100%; padding:4px 6px; border:1px solid var(--border); border-radius:5px;
+  font-size:12px; font-family:inherit; box-sizing:border-box;
+}
+.edit-table input:focus { border-color:var(--blue); outline:none; }
+.edit-table select {
+  padding:4px 6px; border:1px solid var(--border); border-radius:5px;
+  font-size:12px; font-family:inherit; background:white;
+}
+.edit-table select:focus { border-color:var(--blue); outline:none; }
+.edit-bar {
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  padding:8px 0 12px; border-bottom:1px solid var(--border); margin-bottom:10px;
+}
+.edit-status { font-size:12px; color:var(--text-muted); flex:1; }
+.edit-status.ok  { color:var(--green-dark); }
+.edit-status.err { color:#dc2626; }
+.toggle-switch {
+  position:relative; display:inline-block; width:36px; height:20px;
+}
+.toggle-switch input { opacity:0; width:0; height:0; }
+.toggle-slider {
+  position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+  background:#ccc; border-radius:20px; transition:0.2s;
+}
+.toggle-slider:before {
+  position:absolute; content:""; height:14px; width:14px;
+  left:3px; bottom:3px; background:white; border-radius:50%; transition:0.2s;
+}
+.toggle-switch input:checked + .toggle-slider { background:var(--green); }
+.toggle-switch input:checked + .toggle-slider:before { transform:translateX(16px); }
+
+/* メモボタン */
+.btn-memo {
+  padding: 3px 9px; font-size: 11px; font-weight: 600; border-radius: 6px;
+  border: 1.5px solid var(--border); background: white; cursor: pointer;
+  font-family: inherit; color: var(--text-muted); transition: all 0.1s; white-space: nowrap;
+}
+.btn-memo:hover { border-color: var(--blue); color: var(--blue-dark); }
+.btn-memo.has-memo { background: var(--blue-light); border-color: var(--blue); color: var(--blue-dark); }
+.btn-memo.excluded { background: #f3f4f6; border-color: #9ca3af; color: #6b7280; text-decoration: line-through; }
+
+/* メモ入力行 */
+.memo-row td { background: #f8faff !important; }
+.memo-input {
+  width: 100%; padding: 5px 8px; border: 1.5px solid var(--blue); border-radius: 6px;
+  font-size: 12px; font-family: inherit; box-sizing: border-box;
+}
+.btn-sm {
+  padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px;
+  border: none; cursor: pointer; font-family: inherit;
+}
+.btn-save { background: var(--blue); color: white; }
+.btn-save:hover { background: var(--blue-dark); }
+.btn-del  { background: #fee2e2; color: #991b1b; }
+.btn-del:hover { background: #fca5a5; }
+
+/* 兄弟候補チップ */
+.sibling-chips { display:flex; flex-wrap:wrap; gap:4px; }
+.sibling-chip {
+  display:inline-flex; align-items:center; gap:4px;
+  background:#fef3c7; border:1px solid #f59e0b; border-radius:12px;
+  padding:2px 8px; font-size:11px; color:#92400e;
+}
+.chip-excl-btn {
+  background:#ef4444; color:white; border:none; border-radius:8px;
+  padding:1px 6px; font-size:10px; cursor:pointer; white-space:nowrap;
+}
+.chip-excl-btn:hover { background:#dc2626; }
+.chip-excl-btn:disabled { background:#9ca3af; cursor:not-allowed; }
+.id-badge-wrap { position:relative; display:inline-block; cursor:default; }
+.id-badge-wrap .id-tooltip {
+  display:none; position:fixed; z-index:9999;
+  min-width:260px; max-width:360px;
+  background:#1e293b; color:#f1f5f9; font-size:11px; line-height:1.6;
+  border-radius:6px; padding:8px 10px; white-space:normal; pointer-events:none;
+  box-shadow:0 4px 12px rgba(0,0,0,0.25);
+}
+.id-badge-wrap:hover .id-tooltip { display:block; }
+/* 除外済み行 */
+.alert-table tr.excluded td { opacity: 0.4; }
+/* グレーアウト行 */
+.alert-table tr.mode-gray td { opacity: 0.35; background: #f8f9fa !important; }
+.alert-table tr.mode-gray td:first-child { border-left-color: #ccc !important; }
+/* 表示しない行 */
+.alert-table tr.mode-hide { display: none; }
+/* 表示モードドロップダウン */
+.mode-select {
+  padding: 3px 6px; font-size: 11px; border: 1px solid var(--border);
+  border-radius: 5px; font-family: inherit; background: white;
+  color: var(--text-muted); cursor: pointer;
+}
+.mode-select.mode-gray { background: #f0f1f3; color: #6b7280; }
+.mode-select.mode-hide { background: #fee2e2; color: #991b1b; }
+.badge-mode { background: #e5e7eb; color: #6b7280; font-size: 10px; font-weight: 700; border-radius: 20px; padding: 2px 8px; white-space: nowrap; }
+
+/* チェック結果UI */
+/* チェック結果UI */
+.summary-bar {
+  display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.summary-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 700;
+}
+.summary-chip .num { font-size: 22px; font-weight: 900; line-height: 1; }
+.chip-error  { background: #fee2e2; color: #991b1b; }
+.chip-warn   { background: #E87000; color: #ffffff; }
+.chip-info   { background: var(--blue-light); color: var(--blue-dark); }
+.chip-confirm{ background: #ffffff; color: #854d0e; border: 1px solid #eab308; }
+.chip-ok     { background: var(--green-light); color: var(--green-dark); }
+
+.alert-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.alert-table th {
+  background: var(--surface2); padding: 7px 10px;
+  text-align: left; font-weight: 700; color: var(--text-muted);
+  border-bottom: 2px solid var(--border); white-space: nowrap;
+}
+.alert-table td {
+  padding: 6px 10px; border-bottom: 1px solid var(--surface2); vertical-align: top;
+}
+.alert-table tr:hover td { background: var(--surface); }
+.alert-table tr.level-error td  { border-left: 3px solid #ef4444; }
+.alert-table tr.level-warning td { border-left: 3px solid #E87000; }
+.alert-table tr.level-info td  { border-left: 3px solid var(--blue); }
+.alert-table tr.level-confirm td { border-left: 3px solid #eab308; }
+
+.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.filter-btn {
+  padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
+  border: 1.5px solid var(--border); background: white; cursor: pointer; font-family: inherit;
+  transition: all 0.1s;
+}
+.filter-btn.active-error  { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+.filter-btn.active-warn   { background: var(--amber-light); border-color: var(--amber); color: var(--amber-dark); }
+.filter-btn.active-info   { background: var(--blue-light); border-color: var(--blue); color: var(--blue-dark); }
+.filter-btn.active-all    { background: var(--surface2); border-color: var(--border); color: var(--text); }
+</style>
+</head>
+<body>
+<div id="csv-warn-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.45);display:none;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:28px 32px;max-width:480px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.2);">
+    <div style="font-size:20px;margin-bottom:12px;" id="csv-warn-icon"></div>
+    <div style="font-size:14px;line-height:1.7;color:#1e293b;" id="csv-warn-body"></div>
+    <div style="margin-top:20px;text-align:right;">
+      <button onclick="document.getElementById('csv-warn-modal').style.display='none'" style="background:#1e293b;color:#fff;border:none;border-radius:6px;padding:8px 24px;font-size:14px;cursor:pointer;">OK</button>
+    </div>
+  </div>
+</div>
+<div id="global-tooltip" style="display:none;position:fixed;z-index:9999;min-width:220px;max-width:340px;background:#1e293b;color:#f1f5f9;font-size:11px;line-height:1.6;border-radius:6px;padding:8px 10px;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+<div id="mini-toast"></div>
+
+<div class="app-header">
+  <h1>請求書チェックツール</h1>
+  <span class="sub">フォレスタDB 請求ミス検知システム v0.11</span>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" data-tab="tab-check" onclick="switchTab('tab-check')">チェック実行</button>
+  <button class="tab-btn" data-tab="tab-master" onclick="switchTab('tab-master')">金額マスタ</button>
+  <button class="tab-btn" data-tab="tab-spec" onclick="switchTab('tab-spec')">チェック仕様</button>
+  <button class="tab-btn" data-tab="tab-exclude" onclick="switchTab('tab-exclude')">除外・メモ管理</button>
+</div>
+
+<!-- ===== タブ1: チェック実行 ===== -->
+<div class="tab-panel active" id="tab-check">
+  <div style="background:#fff5e8;border:1px solid #f4b56a;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#7a5010;line-height:1.7;">
+    <strong>📌 請求書の「請求月」は授業月です（決済月の翌月）。</strong><br>
+    例：4月末決済の請求書 → 請求月は <strong>5月</strong>。3月末決済 → 4月分。<br>
+    <strong>① 当月</strong>＝チェックしたい請求書／<strong>② 前月</strong>＝その1つ前の請求書（新入生・退会・CA入会金などの比較に使用）。<br>
+    <span style="display:inline-block;margin-top:6px;padding:4px 8px;background:#fef9c3;border-radius:4px;font-size:12px;">
+      📋 <strong>当月のみ</strong>アップロード → A系・C系・D系チェックのみ実行（B系スキップ）　／　
+      📋 <strong>先月のみ</strong>アップロード → 翌月の請求額予測テーブルを表示
+    </span>
+  </div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-title" style="font-size:16px;color:var(--crimson);">① 当月CSV（チェック対象）</div>
+      <div class="upload-area" id="area-current"
+        ondragover="dragOver(event,'area-current')"
+        ondragleave="dragLeave(event,'area-current')"
+        ondrop="dropFile(event,'current')">
+        <input type="file" id="file-current" accept=".csv" onchange="loadCSV('current',this)">
+        <div class="upload-label">
+          <div style="margin-bottom:8px;color:var(--text-light)"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+          <strong onclick="document.getElementById('file-current').click()">クリックして選択</strong>
+          またはここにドラッグ
+        </div>
+      </div>
+      <div id="badge-current"></div>
+      <div id="preview-current"></div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="font-size:16px;color:var(--text-muted);">② 前月CSV（比較用）</div>
+      <div class="upload-area" id="area-prev"
+        ondragover="dragOver(event,'area-prev')"
+        ondragleave="dragLeave(event,'area-prev')"
+        ondrop="dropFile(event,'prev')">
+        <input type="file" id="file-prev" accept=".csv" onchange="loadCSV('prev',this)">
+        <div class="upload-label">
+          <div style="margin-bottom:8px;color:var(--text-light)"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+          <strong onclick="document.getElementById('file-prev').click()">クリックして選択</strong>
+          またはここにドラッグ
+        </div>
+      </div>
+      <div id="badge-prev"></div>
+      <div id="preview-prev"></div>
+    </div>
+  </div>
+
+  <div style="text-align:center; margin: 16px 0;">
+    <button class="btn-primary" id="btn-run" onclick="runCheck()" disabled>
+      チェック実行
+    </button>
+    <div style="font-size:11px; color:var(--text-light); margin-top:6px;">
+      <span id="run-hint">当月・前月のどちらか、または両方をアップロードするとチェックできます</span>
+    </div>
+  </div>
+
+  <div id="check-result">
+    <div class="empty-state">
+      <div class="empty-state-icon" style="color:var(--text-light)"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+      <div>チェック結果がここに表示されます</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== タブ2: 金額マスタ ===== -->
+<div class="tab-panel" id="tab-master">
+  <div class="card">
+    <div class="edit-bar">
+      <button class="btn-primary" onclick="saveMasterToGas()" id="btn-save-master">スプレに保存</button>
+      <button class="btn-primary" style="background:var(--blue);" onclick="addMasterRow()">＋ 行を追加</button>
+      <span class="edit-status" id="master-save-status">スプレに保存するとチェックに反映されます</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="edit-table" id="master-edit-table">
+        <thead><tr>
+          <th>区分</th><th>種別</th><th>グレードコード</th><th>対象月</th><th>金額（円）</th><th></th>
+        </tr></thead>
+        <tbody id="master-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== タブ3: チェック仕様 ===== -->
+<div class="tab-panel" id="tab-spec">
+  <div class="card">
+    <div class="edit-bar">
+      <button class="btn-primary" onclick="saveChecksToGas()" id="btn-save-checks">スプレに保存</button>
+      <span class="edit-status" id="checks-save-status">有効/無効・レベルを変更してスプレに保存するとチェックに反映されます</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="edit-table" id="checks-edit-table">
+        <thead><tr>
+          <th>有効</th><th>ID</th><th>カテゴリ</th><th>レベル</th><th>説明</th>
+        </tr></thead>
+        <tbody id="checks-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ===== タブ4: 除外・メモ管理 ===== -->
+<div class="tab-panel" id="tab-exclude">
+  <div class="card">
+    <div class="card-title">⚙️ 請求書チェック連携設定</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <input id="gas-url" type="text" placeholder="GASデプロイURL を貼り付け"
+        style="flex:1;min-width:260px;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;"
+        oninput="saveGasUrl()">
+      <button class="btn-primary" onclick="fetchFromSpread()">🔄 スプレから読み込む</button>
+    </div>
+    <div id="sync-status" style="margin-top:8px;font-size:12px;color:var(--text-muted);"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">👥 会員管理連携設定</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+      会員管理ツールのGAS URLを設定すると、生徒マスターと照合して「未登録生徒」「請求漏れ」「退会予定」などを検知できます。<br>
+      <strong>※ 会員管理スプレッドシートへの書き込みは一切行いません（読み取り専用）。</strong>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <input id="kanri-gas-url" type="text" placeholder="会員管理GASデプロイURL を貼り付け"
+        style="flex:1;min-width:260px;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;"
+        oninput="saveKanriGasUrl()">
+      <button class="btn-primary" onclick="testKanriConnection()">🔄 接続確認</button>
+    </div>
+    <div id="kanri-sync-status" style="margin-top:8px;font-size:12px;color:var(--text-muted);"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🚫 登録済み 除外・対応メモ</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+      チェック結果画面のアラート行にある「メモ」ボタンから登録できます。<br>
+      スプレッドシートが連携されている場合は自動で保存・共有されます。
+    </div>
+    <div id="memo-list">（まだ登録がありません）</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔗 登録済み 兄弟除外ペア</div>
+    <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;">
+      C5アラートの「兄弟でない」ボタンで登録したペアです。<br>
+      登録後は次回チェックから兄弟候補に表示されなくなります。スプレッドシートに保存・共有されます。
+    </div>
+    <div id="sibling-excl-list">（まだ登録がありません）</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ===================== データ =====================
+var _csv = { current: null, prev: null };
+
+var DEFAULT_MASTER = {
+  basic: [
+    { label: '塾 小学低学年（小1〜4）', gradeRange: [11,12,13,14], months: 'all', amount: 8800 },
+    { label: '塾 小学高学年（小5〜6）', gradeRange: [15,16], months: 'all', amount: 13200 },
+    { label: '塾 中学生（中1〜2）',     gradeRange: [21,22],    months: 'all', amount: 29800 },
+    { label: '塾 中3（基本）',          gradeRange: [23],       months: 'all', amount: 29800 },
+    { label: '塾 高1（4〜6月）',        gradeRange: [31],       months: [4,5,6], amount: 9800 },
+    { label: '塾 高1（7月以降）',       gradeRange: [31],       months: [7,8,9,10,11,12,1,2,3], amount: 16500 },
+    { label: '塾 高2〜3',              gradeRange: [32,33],    months: 'all', amount: 16500 },
+    { label: 'CA（通常）',             gradeRange: 'ca',       months: 'all', amount: 10780 },
+  ],
+  special: [
+    { label: '教室管理費 小学生',       gradeRange: [11,12,13,14,15,16], months: [4,8,12], amount: 9900 },
+    { label: '教室管理費 中学生',       gradeRange: [21,22,23],          months: [4,8,12], amount: 12900 },
+    { label: '教室管理費 CA小学生',     gradeRange: 'ca_small',          months: [4,8,12], amount: 9900 },
+    { label: '教室管理費 CA中学生',     gradeRange: 'ca_middle',         months: [4,8,12], amount: 12900 },
+    { label: '年間教材費 小学生',       gradeRange: [11,12,13,14,15,16], months: [4],      amount: 10000 },
+    { label: '年間教材費 中学生（中1〜3）', gradeRange: [21,22,23],        months: [4],      amount: 29800 },
+    { label: '受験特訓教材費（中3・4月追加）', gradeRange: [23],          months: [4],      amount: 19800 },
+    { label: '模試代 中3',             gradeRange: [23],                months: [9,11,1,2], amount: 5000 },
+    { label: '模試代 中1・2',          gradeRange: [21,22],             months: [4],      amount: 3000 },
+  ],
+  sibling: [
+    { label: '兄弟割引 教室管理費',     months: [4,8,12], amount: 5000 },
+  ],
+  ca_entry_fee: 8250,
+};
+
+var _master = JSON.parse(JSON.stringify(DEFAULT_MASTER));
+
+// ===================== 定数 =====================
+var VALID_GRADES    = [11,12,13,14,15,16,21,22,23,31,32,33];
+var SMALL_GRADES    = [11,12,13,14,15,16];
+var MIDDLE_GRADES   = [21,22,23];
+var HIGH_GRADES     = [31,32,33];
+var SPECIAL_MONTHS  = [4,8,12];  // 管理費・兄弟割引の対象月（請求月=授業月ベース。決済3/7/11月→請求4/8/12）
+var MOSHI_CHU3      = [9,11,1,2]; // 請求月ベース（未使用デッドだが整合のため修正）
+var MOSHI_CHU12     = [4]; // 請求月ベース（未使用デッドだが整合のため修正）
+var CA_NORMAL_AMT   = 10780;
+var CA_ENTRY_AMT    = 19030;  // 入会月（10780+8250）
+var SIBLING_DISC    = 5000;
+var MAX_AMOUNT      = 200000;
+
+// ===================== CSV読み込み =====================
+function loadCSV(type, input) {
+  var file = input.files[0];
+  if (!file) return;
+  readCSVFile(file, type);
+}
+
+function readCSVFile(file, type) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var reader2 = new FileReader();
+    reader2.onload = function(e2) {
+      parseAndShow(e2.target.result, type, file.name);
+    };
+    reader2.readAsText(new Blob([new Uint8Array(e.target.result)]), 'Shift-JIS');
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function dropFile(e, type) {
+  e.preventDefault();
+  var areaId = type === 'current' ? 'area-current' : 'area-prev';
+  dragLeave(e, areaId);
+  var file = e.dataTransfer.files[0];
+  if (!file || !file.name.endsWith('.csv')) { toast('⚠️ CSVファイルを選択してください'); return; }
+  var reader = new FileReader();
+  reader.onload = function(ev) {
+    var reader2 = new FileReader();
+    reader2.onload = function(e2) {
+      parseAndShow(e2.target.result, type, file.name);
+    };
+    reader2.readAsText(new Blob([new Uint8Array(ev.target.result)]), 'Shift-JIS');
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function dragOver(e, areaId) {
+  e.preventDefault();
+  document.getElementById(areaId).classList.add('drag-over');
+}
+function dragLeave(e, areaId) {
+  document.getElementById(areaId).classList.remove('drag-over');
+}
+
+function parseAndShow(text, type, filename) {
+  var lines = text.split('\n');
+  var headerIdx = -1;
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].indexOf('請求年') >= 0) { headerIdx = i; break; }
+  }
+  if (headerIdx < 0) { toast('⚠️ CSVの形式が正しくありません'); return; }
+
+  var headers = parseCSVLine(lines[headerIdx]);
+  var rows = [];
+  for (var j = headerIdx + 1; j < lines.length; j++) {
+    var line = lines[j].trim();
+    if (!line) continue;
+    var cols = parseCSVLine(line);
+    if (cols.length < headers.length) continue;
+    var row = {};
+    headers.forEach(function(h, idx) { row[h.trim()] = (cols[idx] || '').trim(); });
+    rows.push(row);
+  }
+
+  _csv[type] = { filename: filename, headers: headers, rows: rows };
+
+  var badgeEl = document.getElementById('badge-' + type);
+  var yearMonth = rows.length > 0 ? rows[0]['請求年'] + '年' + rows[0]['請求月'] + '月' : '';
+  badgeEl.innerHTML = '<div class="file-badge">✅ ' + filename + '　' + rows.length + '件　' + yearMonth + '</div>';
+
+  var previewEl = document.getElementById('preview-' + type);
+  var previewCols = ['生徒番号','姓','名','学年番号','請求金額','支払区分','請求ステータス'];
+  var html = '<table class="preview-table" style="margin-top:10px;">';
+  html += '<tr>' + previewCols.map(function(c) { return '<th>' + c + '</th>'; }).join('') + '</tr>';
+  rows.slice(0, 3).forEach(function(row) {
+    html += '<tr>' + previewCols.map(function(c) { return '<td>' + (row[c] || '') + '</td>'; }).join('') + '</tr>';
+  });
+  if (rows.length > 3) {
+    html += '<tr><td colspan="' + previewCols.length + '" style="color:var(--text-light);font-size:11px;text-align:center;">… 他' + (rows.length - 3) + '件</td></tr>';
+  }
+  html += '</table>';
+  previewEl.innerHTML = html;
+
+  updateRunButton();
+  toast('✅ ' + (type === 'current' ? '当月' : '前月') + 'ファイルを読み込みました（' + rows.length + '件）');
+}
+
+function parseCSVLine(line) {
+  var result = [];
+  var cur = '';
+  var inQuote = false;
+  for (var i = 0; i < line.length; i++) {
+    var c = line[i];
+    if (c === '"') { inQuote = !inQuote; }
+    else if (c === ',' && !inQuote) { result.push(cur); cur = ''; }
+    else { cur += c; }
+  }
+  result.push(cur);
+  return result;
+}
+
+function updateRunButton() {
+  var _hasAny = !!((_csv.current && _csv.current.rows.length > 0) || (_csv.prev && _csv.prev.rows.length > 0));
+  document.getElementById('btn-run').disabled = !_hasAny;
+  var hint = document.getElementById('run-hint');
+  if (hint) {
+    if (!_csv.current && !_csv.prev) {
+      hint.textContent = '当月・前月のどちらか、または両方をアップロードするとチェックできます';
+    } else if (_csv.current && !_csv.prev) {
+      hint.textContent = '当月のみ：生徒マスタとの比較チェックを実行します（B系スキップ）';
+    } else if (!_csv.current && _csv.prev) {
+      hint.textContent = '前月のみ：翌月の請求予測を算出します';
+    } else {
+      hint.textContent = '';
+    }
+  }
+}
+
+// ===================== ユーティリティ =====================
+function getGrade(row) { return parseInt(row['学年番号'] || '0', 10); }
+
+// 学年番号(フォレスタDB) → 生徒マスターの学年テキスト変換テーブル
+var GRADE_NUM_TO_LABEL = {
+  11:'小1', 12:'小2', 13:'小3', 14:'小4', 15:'小5', 16:'小6',
+  21:'中1', 22:'中2', 23:'中3',
+  31:'高1', 32:'高2', 33:'高3'
+};
+
+// ラベル → 学年番号 の逆引き（兄弟の学年大小比較用）
+var GRADE_LABEL_TO_NUM = {};
+Object.keys(GRADE_NUM_TO_LABEL).forEach(function(num){
+  GRADE_LABEL_TO_NUM[GRADE_NUM_TO_LABEL[num]] = parseInt(num, 10);
+});
+// マスタ生徒の学年番号を返す（s.grade はラベル「中3」等。不明は0）
+function masterGradeNum(s) {
+  var lbl = String((s && s.grade) || '').trim();
+  return GRADE_LABEL_TO_NUM[lbl] || 0;
+}
+
+// 名前正規化（スペース除去・全角半角統一）
+function normalizeName(s) {
+  if (!s) return '';
+  return String(s)
+    .replace(/[ 　 ]/g, '') // 半角・全角・ノーブレークスペース除去
+    .trim();
+}
+
+// CSVの行から突合キーを生成（氏名結合+学年ラベル）
+function csvMatchKey(row) {
+  var fullName = normalizeName((row['姓'] || '') + (row['名'] || ''));
+  var gradeLabel = GRADE_NUM_TO_LABEL[getGrade(row)] || String(getGrade(row));
+  return fullName + '|' + gradeLabel;
+}
+
+// 生徒マスターの1件から突合キーを生成
+function masterMatchKey(s) {
+  var fullName = normalizeName(s.name || '');
+  var gradeLabel = String(s.grade || '').trim();
+  return fullName + '|' + gradeLabel;
+}
+function getAmount(row) { return parseInt((row['請求金額'] || '0').replace(/,/g,''), 10); }
+function getMonth(row) { return parseInt(row['請求月'] || '0', 10); }
+function getName(row) { return (row['姓'] || '') + ' ' + (row['名'] || ''); }
+function getSei(row) { return (row['姓'] || '').trim(); }
+
+// 月謝前倒し：「請求月=5」は「5月末に6月分を請求」→ 請求月の翌月が対象月
+// ただしチェック上は「請求月」の値で管理費・模試月を判定する
+// (例: 3月末=管理費発生 → 請求月3 で管理費チェック)
+
+// isSmall: 学年番号が小学生か
+function isSmall(g)  { return SMALL_GRADES.indexOf(g) >= 0; }
+function isMiddle(g) { return MIDDLE_GRADES.indexOf(g) >= 0; }
+function isHigh(g)   { return HIGH_GRADES.indexOf(g) >= 0; }
+
+// 生徒マスターから所属を取得（_students突合済み前提）
+// row: CSVの1行。masterMapはrunCheck内で構築されたもの
+// 戻り値: { isJuku: bool, isCa: bool } または null（突合失敗時）
+function getStudentAttrs(row, masterMap) {
+  var key = csvMatchKey(row);
+  var s = masterMap[key];
+  if (!s) return null;
+  return {
+    isJuku: !!s.attrJuku,
+    isCa:   !!s.attrCa
+  };
+}
+
+// 標準月謝を返す（塾生専用。CA生はattrCa確認でスキップ）
+function getStandardBasicAmount(g, month) {
+  if (g === 23) return 54800;
+  if (g === 31) return [4,5,6].indexOf(month) >= 0 ? 9800 : 16500;
+  if (g === 32 || g === 33) return 16500;
+  if (g === 21 || g === 22) return 29800;
+  if (g === 15 || g === 16) return 13200;
+  if (g === 11 || g === 12 || g === 13 || g === 14) return 8800;
+  return null; // 不明
+}
+
+// 管理費の標準金額を返す
+function getStandardKanrihi(g) {
+  if (isSmall(g)) return 9900;
+  if (isMiddle(g)) return 12900;
+  return 0; // 高校生なし
+}
+
+// ===================== あるべき額 計算エンジン（v0.10・マスタ駆動） =====================
+// 金額はすべて MASTER_ROWS（金額マスタ）から lookupMaster() で引く。コードは金額を持たない。
+// ルール（いつ・誰に積むか）のみコードが判断する。
+// 【B案・暫定】MASTER_ROWS はHTML内定数。次ステップでGAS/スプレから費目キー付きで読み込む予定。
+
+// 【重要】内蔵デフォルトは廃止。金額マスタはスプレッドシートが唯一の正データ。
+// 起動時に buildMasterRows() がスプレから費目キー付きで構築する。
+// 空のままチェック実行するとガードで中断する（見えない計算ミスを防ぐ）。
+var MASTER_ROWS = [];
+
+// スプレ生データ(_rawMasterRows)から MASTER_ROWS を構築する
+// 各行: {費目キー, 区分, 種別, グレードコード, 対象月, 金額}
+function buildMasterRows(rawRows) {
+  var out = [];
+  (rawRows || []).forEach(function(r) {
+    var key = (r['費目キー'] || '').toString().trim();
+    if (!key) return; // 費目キーがない行はスキップ（不正データ）
+    var gradesRaw = (r['グレードコード'] != null ? r['グレードコード'] : '').toString().trim();
+    var grades;
+    if (gradesRaw === 'ca' || gradesRaw === '-') grades = gradesRaw;
+    else grades = gradesRaw.split(',').map(function(g){ return parseInt(g.trim(), 10); }).filter(function(n){ return !isNaN(n); });
+    var monthsRaw = (r['対象月'] != null ? r['対象月'] : 'all').toString().trim();
+    var months = (monthsRaw === 'all') ? 'all' : monthsRaw.split(',').map(function(m){ return parseInt(m.trim(), 10); }).filter(function(n){ return !isNaN(n); });
+    var amount = parseInt(r['金額'], 10) || 0;
+    out.push({ key: key, grades: grades, months: months, amount: amount });
+  });
+  MASTER_ROWS = out;
+  return out;
+}
+
+
+// 費目キー＋学年＋月 で金額を引く。該当なしは null。
+// CA費目は grade='ca' を渡す。
+function lookupMaster(feeKey, grade, month) {
+  for (var i = 0; i < MASTER_ROWS.length; i++) {
+    var r = MASTER_ROWS[i];
+    if (r.key !== feeKey) continue;
+    var gradeOk;
+    if (r.grades === 'ca') gradeOk = (grade === 'ca');
+    else if (r.grades === '-') gradeOk = true;
+    else gradeOk = (Object.prototype.toString.call(r.grades) === '[object Array]' && r.grades.indexOf(grade) >= 0);
+    if (!gradeOk) continue;
+    var monthOk = (r.months === 'all') || (Object.prototype.toString.call(r.months) === '[object Array]' && r.months.indexOf(month) >= 0);
+    if (!monthOk) continue;
+    return r.amount;
+  }
+  return null;
+}
+
+// あるべき額の積み上げ（マスタ駆動）
+// student: { grade, attrJuku, attrCa, jukenJukou, caNewThisMonth, jukuNewThisMonth }
+// 戻り値: { items: [{name, amount}], total }
+function calcExpected(student, month) {
+  var g = student.grade;
+  var items = [];
+  var SPECIAL = [4,8,12]; // 教室管理費の対象月（請求月ベース）
+
+  if (student.attrJuku) {
+    var jt = lookupMaster('juku_tuition', g, month);
+    if (jt != null) items.push({ name: '塾月謝', amount: jt });
+    if (g === 23 && student.jukenJukou) {
+      var jk = lookupMaster('juken', g, month);
+      if (jk != null) items.push({ name: '受験特訓', amount: jk });
+    }
+    var ms = lookupMaster('moshi', g, month);
+    if (ms != null) items.push({ name: '模試代', amount: ms });
+    // 年間教材費：4月分（新年度）は全員に発生。4月以外の月に入会した塾新入生は初月に前倒し発生（排他）
+    var kz = lookupMaster('kyozaihi', g, month);
+    if (kz != null) {
+      // 4月分（新年度ロジック）
+      items.push({ name: '年間教材費', amount: kz });
+      if (g === 23 && student.jukenJukou) {
+        var jkz = lookupMaster('juken_kyozai', g, month);
+        if (jkz != null) items.push({ name: '受験特訓教材費', amount: jkz });
+      }
+    } else if (student.jukuNewThisMonth) {
+      // 4月以外の新入生：初月に年間教材費を前倒し（マスタの4月分金額を引く）
+      var kzNew = lookupMaster('kyozaihi', g, 4);
+      if (kzNew != null) items.push({ name: '年間教材費（新入生初月）', amount: kzNew });
+      if (g === 23 && student.jukenJukou) {
+        var jkzNew = lookupMaster('juken_kyozai', g, 4);
+        if (jkzNew != null) items.push({ name: '受験特訓教材費（新入生初月）', amount: jkzNew });
+      }
+    }
+  }
+
+  if (student.attrCa) {
+    var ct = lookupMaster('ca_tuition', 'ca', month);
+    if (ct != null) items.push({ name: 'CA月謝', amount: ct });
+    if (student.caNewThisMonth) {
+      var cn = lookupMaster('ca_nyukai', 'ca', month);
+      if (cn != null) items.push({ name: 'CA入会金', amount: cn });
+    }
+  }
+
+  // 教室管理費（請求月4・8・12月）。塾CA両方でも1回だけ
+  if (SPECIAL.indexOf(month) >= 0 && (student.attrJuku || student.attrCa)) {
+    var kh = lookupMaster('kanrihi', g, month);
+    if (kh != null) items.push({ name: '教室管理費', amount: kh });
+  }
+
+  var total = items.reduce(function(s, it) { return s + it.amount; }, 0);
+  return { items: items, total: total };
+}
+
+// ===================== チェックロジック =====================
+var _alerts = [];
+var _okStudents = []; // アラートなし生徒（緑表示用）
+var _noPrevMode   = false; // 当月のみモード（先月データなし）
+var _prevOnlyMode = false; // 先月のみモード（当月データなし）
+var _masterClassroomMap = {}; // masterMatchKey → classroom（教室名）
+
+function addAlert(level, checkId, row, msg, diff, personKey) {
+  // personKey（人物特定キー＝正規化フルネーム|学年ラベル）。
+  // 省略時はCSV行から生成。dummyRow発行(C5/B4)はmasterMatchKey(s)を明示的に渡す。
+  var pKey = personKey || csvMatchKey(row);
+  var pParts = String(pKey).split('|');
+  var pGradeLabel = pParts.length > 1 ? pParts[pParts.length - 1] : '';
+  var pFullName = pParts.slice(0, pParts.length - 1).join('|') || pParts[0] || '';
+  _alerts.push({
+    level: level,        // 'error' | 'warning' | 'confirm'
+    checkId: checkId,
+    name: getName(row),
+    grade: getGrade(row),
+    amount: getAmount(row),
+    diff: diff || null,
+    msg: msg,
+    row: row,
+    personKey: pKey,       // 静音化・メモの人物単位キー
+    personName: pFullName, // 表示・GAS送信用フルネーム（正規化済み）
+    personGrade: pGradeLabel // 表示・GAS送信用 学年ラベル
+  });
+}
+
+async function runCheck() {
+  _alerts = [];
+  _okStudents = [];
+  var cur = _csv.current ? _csv.current.rows : [];
+  var prev = _csv.prev ? _csv.prev.rows : [];
+
+  // ===================== CSV入力バリデーション（モーダル警告＋並行検知） =====================
+  var _csvWarnLines = [];
+  _prevOnlyMode = false; // 先月のみモード
+  _noPrevMode   = false; // 当月のみモード
+
+  if (!_csv.current && !_csv.prev) {
+    toast('CSVを読み込んでからチェックを実行してください。');
+    return;
+  }
+
+  if (_csv.current && !_csv.prev) {
+    _noPrevMode = true;
+    _csvWarnLines.push('⚠️ <strong>先月データがありません。</strong><br>B系チェック（B1〜B5）は先月データとの比較が必要なためスキップします。生徒マスタとの比較（A・C・D系）のみ実行します。');
+  }
+
+  if (!_csv.current && _csv.prev) {
+    _prevOnlyMode = true;
+    var prevM = prev.length > 0 ? getMonth(prev[0]) : 0;
+    var nextM = prevM === 12 ? 1 : prevM + 1;
+    _csvWarnLines.push('⚠️ <strong>当月データがありません。</strong><br>先月データ（' + prevM + '月）をもとに、翌月（' + nextM + '月）の請求予測を算出します。通常のアラートは出ません。');
+  }
+
+  if (_csv.current && _csv.prev) {
+    var curM  = cur.length  > 0 ? getMonth(cur[0])  : 0;
+    var prevM = prev.length > 0 ? getMonth(prev[0]) : 0;
+    if (curM > 0 && prevM > 0) {
+      // 逆順チェック（年をまたぐ場合: 1月/12月を考慮）
+      var diff = curM - prevM;
+      if (diff === -11) diff = 1;   // 12月→1月は正常（+1）
+      if (diff === 11)  diff = -1;  // 1月→12月は逆順
+      if (diff <= 0) {
+        _csvWarnLines.push('⚠️ <strong>当月欄（' + curM + '月）が先月欄（' + prevM + '月）より古い可能性があります。</strong><br>当月欄に入れたCSVで検知を続行します。必要であれば入れ直してください。');
+      } else if (Math.abs(diff) >= 2) {
+        _csvWarnLines.push('⚠️ <strong>当月（' + curM + '月）と先月（' + prevM + '月）が ' + Math.abs(diff) + 'ヶ月離れています。</strong><br>先月比較の精度が下がる可能性があります。そのまま検知を続行します。');
+      }
+    }
+  }
+
+  if (_csvWarnLines.length > 0) {
+    var modal = document.getElementById('csv-warn-modal');
+    document.getElementById('csv-warn-icon').textContent = '📋 CSVデータの確認';
+    document.getElementById('csv-warn-body').innerHTML = _csvWarnLines.join('<hr style="margin:12px 0;border:none;border-top:1px solid #e2e8f0;">');
+    modal.style.display = 'flex';
+  }
+
+  // ===================== 金額マスタ未読込ガード（見えない計算ミス防止） =====================
+  if (!MASTER_ROWS || MASTER_ROWS.length === 0) {
+    toast('❌ 金額マスタが読み込めていません。スプレッドシートに費目キー付きの金額マスタがあるか確認し、ページを再読み込みしてからチェックしてください。');
+    if (_runBtn) { _runBtn.disabled = false; _runBtn.innerHTML = 'チェック実行'; }
+    return;
+  }
+
+  // ===================== GAS URL未設定チェック =====================
+  var seikyuUrl = localStorage.getItem(GAS_URL_KEY) || '';
+  if (!seikyuUrl) {
+    toast('⚠️ 請求書チェックGAS URLが未設定です。「除外・メモ管理」タブでURLを設定してからチェックを実行してください。');
+    return;
+  }
+
+  // ===================== 生徒マスター照合（A1〜A5）★最初に実行 =====================
+  var kanriUrl = localStorage.getItem(KANRI_GAS_URL_KEY) || '';
+  if (!kanriUrl) {
+    toast('⚠️ 会員管理GAS URLが未設定です。「除外・メモ管理」タブでURLを設定してからチェックを実行してください。');
+    return;
+  }
+
+  // スピナー表示
+  var _runBtn = document.getElementById('btn-run');
+  if (_runBtn) { _runBtn.disabled = true; _runBtn.innerHTML = '<span class="spinner"></span>検知中…'; }
+
+  var students = await fetchStudentsFromKanri();
+  if (!students) {
+    toast('❌ 会員管理GASへの接続に失敗しました。URLを確認してから再実行してください。');
+    if (_runBtn) { _runBtn.disabled = false; _runBtn.innerHTML = 'チェック実行'; }
+    return;
+  }
+  _students = students;
+
+  // 先月のみモードはマスタロード後に予測テーブルを出して終了
+  if (_prevOnlyMode) {
+    _masterClassroomMap = {};
+    students.forEach(function(s) { _masterClassroomMap[masterMatchKey(s)] = s.classroom || ''; });
+    renderPrevOnlyForecast(prev);
+    var _runBtnP = document.getElementById('btn-run');
+    if (_runBtnP) { _runBtnP.disabled = false; _runBtnP.innerHTML = 'チェック実行'; }
+    return;
+  }
+
+  // 突合マップ作成（キー → 生徒オブジェクト）
+  var masterMap = {};
+  students.forEach(function(s) {
+    var key = masterMatchKey(s);
+    masterMap[key] = s;
+  });
+
+  // CSVの突合キーセット
+  var csvKeySet = {};
+  cur.forEach(function(row) {
+    csvKeySet[csvMatchKey(row)] = row;
+  });
+
+  // ========== A1: 請求書にいるが生徒マスターにいない ==========
+  cur.forEach(function(row) {
+    var key = csvMatchKey(row);
+    if (!masterMap[key]) {
+      addAlert('error', 'C1', row,
+        '生徒マスターに未登録（' + getName(row).trim() + ' / ' + gradeLabel(getGrade(row)) + '）。登録漏れまたは名前・学年の不一致の可能性あり', null);
+    }
+  });
+
+  // ========== 【新A1】あるべき額とフォレスタ合計の不一致（内訳付き） ==========
+  // 前月CSVのキーセット（CA入会月判定用）
+  var prevKeySet = {};
+  (prev || []).forEach(function(r) { prevKeySet[csvMatchKey(r)] = r; });
+
+  cur.forEach(function(row) {
+    var key = csvMatchKey(row);
+    var s = masterMap[key];
+    if (!s) return; // マスタ未登録は別途A1(旧)で検知済み。あるべき額計算は突合できた生徒のみ
+    if (!s.attrJuku && !s.attrCa) return; // 所属なしは対象外
+
+    var g = getGrade(row);
+    var month = getMonth(row);
+
+    // CA入会月判定：前月CSVに同キーがない＝今月CA初登場
+    var caNew = s.attrCa && !prevKeySet[key];
+    // 塾の新入生（前月CSVになし→今月あり）。初月教材費の判定に使う
+    var jukuNew = s.attrJuku && !prevKeySet[key];
+    // 受験特訓：会員管理の受講コマ(komas)に satType='juken' があるかで判定（A案）
+    // komasが空/未取得の中3は非受講(29,800円)扱い。誤って54,800円で大量A1を出すより安全。
+    var jukenJukou = (g === 23) && Array.isArray(s.komas) &&
+      s.komas.some(function(k){ return k && k.satType === 'juken'; });
+
+    var expected = calcExpected({
+      grade: g,
+      attrJuku: !!s.attrJuku,
+      attrCa: !!s.attrCa,
+      jukenJukou: jukenJukou,
+      caNewThisMonth: caNew,
+      jukuNewThisMonth: jukuNew
+    }, month);
+
+    var actual = getAmount(row);
+    var diff = actual - expected.total;
+
+    if (diff !== 0) {
+      var breakdown = expected.items.map(function(it){
+        return it.name + ':' + it.amount.toLocaleString();
+      }).join(' + ');
+      addAlert('error', 'A1', row,
+        'あるべき額と不一致【内訳: ' + breakdown + ' = ' + expected.total.toLocaleString() +
+        '円】フォレスタ請求: ' + actual.toLocaleString() + '円 ／ 差額: ' +
+        (diff > 0 ? '+' : '') + diff.toLocaleString() + '円',
+        diff);
+    }
+  });
+
+  // ========== A2: 生徒マスターにいるが請求書にいない（＋兄弟まとめ請求の上の子を紐づけ） ==========
+  students.forEach(function(s) {
+    if (!s.attrJuku && !s.attrCa) return;
+    var key = masterMatchKey(s);
+    if (!csvKeySet[key]) {
+      var hasLeave = (s.jukuLeave && s.attrJuku) || (s.caLeave && s.attrCa);
+      if (!hasLeave) {
+        // 兄弟まとめ請求の「上の子」候補をCSVから探す。
+        // 条件：上の子のCSV姓で この子(下の子)のフルネームが始まる（同姓）＋ 上の子の学年番号 > この子の学年番号（年上）。
+        var lowerName = normalizeName(s.name);
+        var uppers = [];      // 候補テキスト（フルネーム＋学年）
+        var upperKeys = []; // 請求書にいる同姓兄弟の personKey（並べ替えの兄弟隣接に使う）
+        var upperNames = []; // フルネームのみ（除外チェック用）
+        cur.forEach(function(r) {
+          var sibSei = getSei(r);
+          if (!sibSei) return;
+          if (lowerName.indexOf(sibSei) !== 0) return;          // 請求書にいる兄弟のCSV姓で始まる（同姓）
+          // 兄弟除外ペアに登録済みならスキップ
+          var candidateName = getName(r).trim();
+          if (isSiblingExcluded(lowerName, candidateName)) return;
+          // 学年の上下は問わない（双方向）：年上が請求書になく年下にまとめるケース・双子も拾う
+          uppers.push(candidateName + '（' + gradeLabel(getGrade(r)) + '）');
+          upperNames.push(candidateName);
+          upperKeys.push(csvMatchKey(r));
+        });
+        var baseMsg = '生徒マスターにいるが請求書にいない（' + lowerName + ' / ' + s.grade + '）。請求漏れの可能性あり（兄弟まとめ請求の下の子なら正常。マークで静音化）';
+        if (uppers.length > 0) {
+          baseMsg += ' ／ 兄弟候補：' + uppers.length + '名が請求書にあり。まとめ請求の可能性';
+        }
+        var dummyRow = { '姓': s.name, '名': '', '学年番号': '', '請求金額': '0' };
+        addAlert('confirm', 'C5', dummyRow, baseMsg, null, masterMatchKey(s));
+        // 直前に push した C5 alert に上の子キーを構造化保持
+        if (upperKeys.length > 0) {
+          _alerts[_alerts.length - 1].siblingUpperKeys = upperKeys;
+          _alerts[_alerts.length - 1].siblingCandidateNames = upperNames; // チップUI用
+          _alerts[_alerts.length - 1].lowerName = lowerName; // 除外登録の一方（下の子）
+        }
+      }
+    }
+  });
+
+  // ========== A3/A4: 退会予定生徒チェック ==========
+  students.forEach(function(s) {
+    var leaveDate = null;
+    var leaveType = '';
+    if (s.attrJuku && s.jukuLeave) {
+      leaveDate = new Date(s.jukuLeave);
+      leaveType = '塾退会予定';
+    } else if (s.attrCa && s.caLeave) {
+      leaveDate = new Date(s.caLeave);
+      leaveType = 'CA退会予定';
+    }
+    if (!leaveDate) return;
+
+    var leaveDateStr = s.jukuLeave || s.caLeave;
+    var key = masterMatchKey(s);
+    var inCsv = !!csvKeySet[key];
+    var dummyRow = { '姓': s.name, '名': '', '学年番号': '', '請求金額': '0' };
+
+    // 退会日の年月 vs 請求対象月（curMonth）で「退会済み」か「最終月付近」かを判定
+    // 退会月 < 対象月 なら退会済み（エラー）、退会月 >= 対象月 なら最終月付近（警告）
+    var leaveMonthNum = leaveDate.getMonth() + 1; // 1-12
+    var leaveYearNum = leaveDate.getFullYear();
+    // curMonth(対象月)は年情報を持たないため、月の前後関係で簡易判定
+    // 退会月が対象月より前＝既に退会済みなのに請求 → エラー
+    var isAlreadyLeft = false;
+    if (!isNaN(leaveMonthNum)) {
+      // 退会年が請求年より前、または同年で退会月<対象月 なら退会済み
+      // 請求年は不明なため、退会月<対象月 を退会済みの目安とする（年跨ぎは最終月扱いで安全側）
+      isAlreadyLeft = (leaveMonthNum < curMonth);
+    }
+    if (inCsv) {
+      if (isAlreadyLeft) {
+        addAlert('error', 'C2', csvKeySet[key],
+          leaveType + '（' + leaveDateStr + '）。退会月（' + leaveMonthNum + '月）が請求対象月（' + curMonth + '月）より前なのに請求書に載っている＝退会済みへの請求の疑い', null);
+      } else {
+        addAlert('confirm', 'C6', csvKeySet[key],
+          leaveType + '（' + leaveDateStr + '）なのに請求書に載っている。最終月の正常請求か手動確認してください', null);
+      }
+    } else {
+      if (!_noPrevMode) {
+        addAlert('warning', 'B4', dummyRow,
+          leaveType + '（' + leaveDateStr + '）だが請求書にいない。最終月の請求漏れの可能性あり', null, masterMatchKey(s));
+      }
+    }
+  });
+
+
+  // ========== A2/A3: 請求金額の単体異常（0円・異常高額） ==========
+  cur.forEach(function(row) {
+    var amt = getAmount(row);
+    if (amt === 0) {
+      addAlert('error', 'A2', row, '請求金額が0円（請求漏れ・設定ミスの疑い）', null);
+    } else if (amt > 200000) {
+      addAlert('error', 'A3', row, '請求金額が異常値（' + amt.toLocaleString() + '円・200,000円超）', null);
+    }
+  });
+
+  // ========== D3: 学年番号バリデーション ==========
+  cur.forEach(function(row) {
+    var g = getGrade(row);
+    if (g === 0) return; // 空欄はスキップ
+    if (VALID_GRADES.indexOf(g) < 0) {
+      addAlert('error', 'C4', row, '学年番号が不正（' + g + '）。有効値：11〜16・21〜23・31〜33', null);
+    }
+  });
+
+  // ========== C3: 重複請求 ==========
+  var keyCount = {};
+  cur.forEach(function(row) {
+    var key = getSei(row) + '|' + row['名'] + '|' + getGrade(row);
+    keyCount[key] = (keyCount[key] || 0) + 1;
+  });
+  Object.keys(keyCount).forEach(function(key) {
+    if (keyCount[key] > 1) {
+      // 代表1件を見つけてアラート
+      var rep = cur.find(function(r) {
+        return (getSei(r) + '|' + r['名'] + '|' + getGrade(r)) === key;
+      });
+      if (rep) addAlert('error', 'C3', rep, '同一生徒が' + keyCount[key] + '行ある（重複請求の疑い）', null);
+    }
+  });
+
+  // ========== C1: 同姓同名・同学年（別生徒番号） ==========
+  for (var i = 0; i < cur.length; i++) {
+    for (var j = i + 1; j < cur.length; j++) {
+      if (getSei(cur[i]) === getSei(cur[j])
+          && cur[i]['名'] === cur[j]['名']
+          && getGrade(cur[i]) === getGrade(cur[j])
+          && cur[i]['生徒番号'] !== cur[j]['生徒番号']) {
+        addAlert('confirm', 'D1', cur[i], '同姓同名・同学年の別生徒番号（別人 or 入力ミスの可能性）', null);
+      }
+    }
+  }
+
+  // ========== C2: 同姓・学年違い（兄弟候補リスト） ==========
+  var siblingPairs = []; // [{a, b}] 同姓ペア
+  for (var i = 0; i < cur.length; i++) {
+    for (var j = i + 1; j < cur.length; j++) {
+      if (getSei(cur[i]) === getSei(cur[j]) && getGrade(cur[i]) !== getGrade(cur[j])) {
+        siblingPairs.push({ a: cur[i], b: cur[j] });
+        // C2アラートは1回だけ（ペアごとに情報として出す）
+        addAlert('confirm', 'D2', cur[i],
+          '兄弟候補：' + getName(cur[i]) + '（' + gradeLabel(getGrade(cur[i])) + '）と'
+          + getName(cur[j]) + '（' + gradeLabel(getGrade(cur[j])) + '）', null);
+      }
+    }
+  }
+
+  // ========== B1: 前月在籍→今月なし ==========
+  if (!_noPrevMode) {
+    prev.forEach(function(pRow) {
+      var key = getSei(pRow) + '|' + pRow['名'] + '|' + getGrade(pRow);
+      var exists = cur.some(function(r) {
+        return (getSei(r) + '|' + r['名'] + '|' + getGrade(r)) === key;
+      });
+      if (!exists) {
+        addAlert('warning', 'B3', pRow, '前月在籍だが今月の請求がない（退会 or 請求漏れ？）', null);
+      }
+    });
+
+    // ========== B2: 今月新規 ==========
+    cur.forEach(function(row) {
+      var key = getSei(row) + '|' + row['名'] + '|' + getGrade(row);
+      var existsInPrev = prev.some(function(r) {
+        return (getSei(r) + '|' + r['名'] + '|' + getGrade(r)) === key;
+      });
+      if (!existsInPrev) {
+        addAlert('confirm', 'B5', row, '今月新規（前月在籍なし）。入会確認・入会金の確認が必要', null);
+      }
+    });
+  }
+
+  // ========== 個別生徒チェック（A系） ==========
+  var curMonth = getMonth(cur[0]);
+
+  // ========== データ品質チェック（E1: 入金未確認 / E2: 現金払い） ==========
+  // ※旧A1の個別金額チェック群は新A1（NA1・マスタ駆動calcExpected）に集約したため削除済み
+  cur.forEach(function(row) {
+    // E1: 請求ステータスが承認済みのまま（入金未確認）
+    if ((row['請求ステータス'] || '').indexOf('承認') >= 0) {
+      addAlert('confirm', 'D4', row, '請求ステータスが「承認済み」のまま（入金未確認）', null);
+    }
+    // E2: 支払区分が現金など（口振・クレカ以外）
+    var pay = (row['支払区分'] || '').trim();
+    if (pay && pay !== '口座振替' && pay !== 'クレジットカード' && pay !== 'クレカ' && pay !== '口振') {
+      addAlert('confirm', 'D5', row, '支払区分が「' + pay + '」（口座振替・クレカ以外）', null);
+    }
+  });
+
+  // ========== B1: 先月比で請求額が変わった ==========
+  if (isCheckEnabled('B1') && !_noPrevMode) {
+    cur.forEach(function(row) {
+      var key = csvMatchKey(row);
+      var prevRow = prevKeySet[key];
+      if (!prevRow) return; // 先月いない（新入生）はB2で扱う
+      var curAmt  = getAmount(row);
+      var prevAmt = getAmount(prevRow);
+      if (curAmt !== prevAmt) {
+        var diff = curAmt - prevAmt;
+        addAlert('warning', 'B1', row,
+          '先月（' + prevAmt.toLocaleString() + '円）→ 今月（' + curAmt.toLocaleString() + '円）に変化（差額 ' + (diff > 0 ? '+' : '') + diff.toLocaleString() + '円）。原因を確認してください',
+          diff);
+      }
+    });
+  }
+
+  // ========== B2: 先月CSVにいない（新入生候補）の教材費・CA入会金チェック ==========
+  if (isCheckEnabled('B2') && !_noPrevMode) {
+    cur.forEach(function(row) {
+      var key = csvMatchKey(row);
+      if (prevKeySet[key]) return; // 先月いる＝新入生でない
+      var curAmt = getAmount(row);
+      var g = getGrade(row);
+      var isCaRow = (g === 0 || String(row['学年番号'] || '').indexOf('ca') >= 0 ||
+                     String(row['グレードコード'] || '').indexOf('ca') >= 0);
+
+      // CA生の入会金チェック（8,250円）
+      var caFee = _master.ca_entry_fee || 8250;
+      if (isCaRow) {
+        if (curAmt % caFee !== 0 && (curAmt - caFee) >= 0) {
+          // 入会金相当が含まれていそう → 確認
+          addAlert('warning', 'B2', row,
+            '先月CSVにいない（新入生候補）。請求額にCA入会金（' + caFee.toLocaleString() + '円）が含まれている可能性あり。新入生であれば正常、そうでなければ誤付与を確認してください', null);
+        } else if (curAmt > 0 && curAmt < caFee * 2) {
+          // 入会金が含まれていなそう → 付け忘れ警告
+          addAlert('warning', 'B2', row,
+            '先月CSVにいない（新入生候補）。CA入会金（' + caFee.toLocaleString() + '円）が含まれていない可能性あり。付け忘れを確認してください', null);
+        }
+        return;
+      }
+
+      // 塾生の初月教材費チェック
+      var kyozaihi = 0;
+      if (g >= 11 && g <= 16) kyozaihi = 10000;       // 小学生
+      else if (g >= 21 && g <= 23) kyozaihi = 29800;  // 中学生
+      // 受験特訓教材費（中3）
+      var jukenKyozai = (g === 23) ? 19800 : 0;
+
+      if (kyozaihi > 0) {
+        // 教材費相当額が請求額に含まれているかを差額で推定
+        // 「教材費分を引いた額」があるべき月謝±管理費相当かどうかは判定しきれないため
+        // 「先月いない＋教材費相当額（単体）で割り切れる」場合に案内を出す
+        var withKyozai    = (curAmt % kyozaihi === 0 || curAmt > kyozaihi);
+        var jukenIncluded = jukenKyozai > 0 && curAmt >= jukenKyozai;
+
+        addAlert('warning', 'B2', row,
+          '先月CSVにいない（新入生候補）。初月教材費（小中学生：' + kyozaihi.toLocaleString() + '円' +
+          (jukenKyozai > 0 ? '、中3受験特訓教材費：' + jukenKyozai.toLocaleString() + '円' : '') +
+          '）の付け忘れがないか確認してください。新入生の場合は入会月に初月教材費を付けるルールです', null);
+      }
+    });
+  }
+
+  // ========== D3: 兄弟まとめ請求パターン（差額から推測） ==========
+  // C5アラートで検出した「請求書にいない子（下の子）× 同姓で請求書にいる子（上の子）」ペアを使って
+  // 上の子の請求額 = 自分のあるべき額 + 下の子のあるべき額 となっていないかを検知
+  if (isCheckEnabled('D3')) {
+    // C5アラートを収集（lowerName + siblingUpperKeys を持つもの）
+    _alerts.filter(function(a) {
+      return a.checkId === 'C5' && a.lowerName && a.siblingUpperKeys && a.siblingUpperKeys.length > 0;
+    }).forEach(function(c5) {
+      var lowerName = c5.lowerName; // 請求書にいない子（下の子）のフルネーム
+      // 下の子のマスタ情報を取得
+      var lowerStudent = null;
+      if (_students) {
+        _students.forEach(function(s) {
+          if (normalizeName(s.name) === lowerName) lowerStudent = s;
+        });
+      }
+      if (!lowerStudent) return;
+
+      // monthはCSV先頭行から取得（dummyRowはgetMonth=0になるため）
+      var month = cur.length > 0 ? getMonth(cur[0]) : 0;
+      // lowerStudentのgradeはラベル（「中3」等）→数値に変換
+      var lowerG = masterGradeNum(lowerStudent);
+      var lowerJuken = (lowerG === 23) && Array.isArray(lowerStudent.komas) &&
+        lowerStudent.komas.some(function(k){ return k && k.satType === 'juken'; });
+      var lowerExp = calcExpected({
+        grade: lowerG,
+        attrJuku: !!lowerStudent.attrJuku,
+        attrCa: !!lowerStudent.attrCa,
+        jukenJukou: lowerJuken,
+        caNewThisMonth: false,
+        jukuNewThisMonth: false
+      }, month);
+
+      // 上の子（請求書にいる）の各候補に対してチェック
+      c5.siblingUpperKeys.forEach(function(upperPersonKey) {
+        // personKey = 正規化フルネーム|学年ラベル → csvMatchKeyで請求書行を特定
+        var upperRow = null;
+        cur.forEach(function(row) {
+          if (csvMatchKey(row) === upperPersonKey) upperRow = row;
+        });
+        if (!upperRow) return;
+
+        var upperActual = getAmount(upperRow);
+        var upperKey = csvMatchKey(upperRow);
+        var upperS = masterMap[upperKey];
+        if (!upperS) return;
+
+        var upperG = getGrade(upperRow);
+        var upperJuken = (upperG === 23) && Array.isArray(upperS.komas) &&
+          upperS.komas.some(function(k){ return k && k.satType === 'juken'; });
+        var upperExp = calcExpected({
+          grade: upperG,
+          attrJuku: !!upperS.attrJuku,
+          attrCa: !!upperS.attrCa,
+          jukenJukou: upperJuken,
+          caNewThisMonth: false,
+          jukuNewThisMonth: false
+        }, month);
+
+        var combined = upperExp.total + lowerExp.total;
+        if (upperActual === combined) {
+          addAlert('confirm', 'D3', upperRow,
+            '請求額（' + upperActual.toLocaleString() + '円）= 自分のあるべき額（' + upperExp.total.toLocaleString() + '円）+ ' +
+            lowerName + 'のあるべき額（' + lowerExp.total.toLocaleString() + '円）と一致。兄弟まとめ請求の可能性あり',
+            null);
+        }
+      });
+    });
+  }
+
+  // ===================== 問題なし生徒（緑）収集 =====================
+  // CSVにいる生徒のうち、アラートが1件も出なかった生徒を緑で表示
+  var alertedKeys = new Set(_alerts.map(function(a) { return a.personKey || ''; }));
+  // マスタからclassroomを引くためのMap（masterMatchKey → classroom）
+  _masterClassroomMap = {};
+  if (_students) {
+    _students.forEach(function(s) {
+      _masterClassroomMap[masterMatchKey(s)] = s.classroom || '';
+    });
+  }
+  _okStudents = [];
+  cur.forEach(function(row) {
+    var key = csvMatchKey(row);
+    if (!alertedKeys.has(key)) {
+      var actual = getAmount(row);
+      var g = getGrade(row);
+      var month = getMonth(row);
+      var s = masterMap[key];
+      // A系根拠：calcExpectedで期待額を計算
+      var aDetail = null;
+      if (s && (s.attrJuku || s.attrCa)) {
+        var caNew = s.attrCa && !prevKeySet[key];
+        var jukuNew = s.attrJuku && !prevKeySet[key];
+        var jukenJukou = (g === 23) && Array.isArray(s.komas) &&
+          s.komas.some(function(k){ return k && k.satType === 'juken'; });
+        var exp = calcExpected({
+          grade: g, attrJuku: !!s.attrJuku, attrCa: !!s.attrCa,
+          jukenJukou: jukenJukou, caNewThisMonth: caNew, jukuNewThisMonth: jukuNew
+        }, month);
+        aDetail = {
+          expected: exp.total,
+          breakdown: exp.items.map(function(it){ return it.name + ': ' + it.amount.toLocaleString() + '円'; }).join(' + ')
+        };
+      }
+      // B系根拠：先月金額
+      var bDetail = null;
+      var prevRow = prevKeySet[key];
+      if (prevRow) {
+        bDetail = { prevAmount: getAmount(prevRow) };
+      }
+      _okStudents.push({
+        name:      getName(row),
+        grade:     g,
+        amount:    actual,
+        classroom: _masterClassroomMap[key] || (row['校舎名'] || row['教室'] || ''),
+        aDetail:   aDetail,
+        bDetail:   bDetail
+      });
+    }
+  });
+
+  // ===================== 結果表示 =====================
+  if (_prevOnlyMode) {
+    renderPrevOnlyForecast(prev);
+  } else {
+    renderResults(curMonth);
+  }
+
+  // スピナーを戻す
+  var _runBtnEnd = document.getElementById('btn-run');
+  if (_runBtnEnd) { _runBtnEnd.disabled = false; _runBtnEnd.innerHTML = 'チェック実行'; }
+}
+
+// ===================== 先月のみモード：翌月予測テーブル =====================
+function renderPrevOnlyForecast(prev) {
+  if (!prev || prev.length === 0) {
+    document.getElementById('check-result').innerHTML = '<p style="color:var(--text-muted);">先月データが空です。</p>';
+    return;
+  }
+  var prevMonth = getMonth(prev[0]);
+  var nextMonth = prevMonth === 12 ? 1 : prevMonth + 1;
+
+  var rows = [];
+  prev.forEach(function(row) {
+    var key = csvMatchKey(row);
+    var s = _students ? _students.find(function(st){ return masterMatchKey(st) === key || csvMatchKey({姓: st.name, 名:'', 学年番号: String(masterGradeNum(st))}) === key; }) : null;
+
+    var prevAmt = getAmount(row);
+    var g = getGrade(row);
+
+    // 翌月の期待額計算
+    var jukenJukou = s && (g === 23) && Array.isArray(s.komas) && s.komas.some(function(k){ return k && k.satType === 'juken'; });
+    var nextExp = calcExpected({
+      grade: g,
+      attrJuku: s ? !!s.attrJuku : true,
+      attrCa:   s ? !!s.attrCa   : false,
+      jukenJukou: !!jukenJukou,
+      caNewThisMonth: false,
+      jukuNewThisMonth: false
+    }, nextMonth);
+
+    var diff = nextExp.total - prevAmt;
+    var breakdown = nextExp.items.map(function(it){ return it.name + ': ' + it.amount.toLocaleString() + '円'; }).join(' + ');
+    var clsLabel = _masterClassroomMap[key] === '北久里浜' ? '北久里浜教室'
+                 : _masterClassroomMap[key] === '久里浜'   ? '京急久里浜駅前教室' : (_masterClassroomMap[key] || '—');
+
+    // 退会予定チェック
+    var leaveNote = '';
+    if (s) {
+      var leaveDate = s.jukuLeave || s.caLeave;
+      if (leaveDate) {
+        var lm = new Date(leaveDate).getMonth() + 1;
+        var leaveLabel = s.jukuLeave ? '塾退会予定' : 'CA退会予定';
+        leaveNote = leaveLabel + '（' + leaveDate + '）。翌月は0円になる可能性があります';
+      }
+    }
+
+    // 先月が入会初月だった可能性チェック
+    // 先月をjukuNewThisMonth:trueで計算した期待額と実額を比較
+    var newbieNote = '';
+    var prevExpNew = calcExpected({
+      grade: g,
+      attrJuku: s ? !!s.attrJuku : true,
+      attrCa:   s ? !!s.attrCa   : false,
+      jukenJukou: !!jukenJukou,
+      caNewThisMonth: s ? !!s.attrCa : false,
+      jukuNewThisMonth: true
+    }, prevMonth);
+    var prevExpNorm = calcExpected({
+      grade: g,
+      attrJuku: s ? !!s.attrJuku : true,
+      attrCa:   s ? !!s.attrCa   : false,
+      jukenJukou: !!jukenJukou,
+      caNewThisMonth: false,
+      jukuNewThisMonth: false
+    }, prevMonth);
+    // 先月実額が「初月版期待額」に近い かつ 通常版と差がある場合 → 初月の可能性
+    var initFee = prevExpNew.total - prevExpNorm.total;
+    if (initFee > 0 && Math.abs(prevAmt - prevExpNew.total) <= 500) {
+      newbieNote = '先月が入会初月の可能性。初月費用（約' + initFee.toLocaleString() + '円）は翌月以降は発生しません';
+    }
+
+    rows.push({
+      name: getName(row), grade: g, classroom: clsLabel,
+      prevAmt: prevAmt, nextAmt: nextExp.total, diff: diff, breakdown: breakdown,
+      leaveNote: leaveNote, newbieNote: newbieNote
+    });
+  });
+
+  // 変化あり→上、変化なし→下
+  rows.sort(function(a, b) {
+    if (a.diff !== 0 && b.diff === 0) return -1;
+    if (a.diff === 0 && b.diff !== 0) return 1;
+    return Math.abs(b.diff) - Math.abs(a.diff);
+  });
+
+  var html = '<div style="margin-bottom:10px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:10px 14px;font-size:13px;color:#1e40af;">'
+    + '📅 <strong>先月（' + prevMonth + '月）→ 翌月（' + nextMonth + '月）予測</strong>　先月データから翌月の請求額変化を算出しています。'
+    + '</div>';
+
+  html += '<table class="alert-table"><thead><tr>'
+    + '<th>生徒名</th><th>学年</th><th>教室</th>'
+    + '<th style="text-align:right;">先月（' + prevMonth + '月）</th>'
+    + '<th style="text-align:right;">翌月予測（' + nextMonth + '月）</th>'
+    + '<th style="text-align:right;">差額</th>'
+    + '<th>翌月内訳</th>'
+    + '<th>注記</th>'
+    + '</tr></thead><tbody>';
+
+  rows.forEach(function(r) {
+    var diffStr = r.diff === 0 ? '—'
+      : (r.diff > 0 ? '<span style="color:#dc2626;">+' + r.diff.toLocaleString() + '円</span>'
+                    : '<span style="color:#2563eb;">' + r.diff.toLocaleString() + '円</span>');
+    var hasNote = r.leaveNote || r.newbieNote;
+    var rowBg = r.leaveNote ? 'background:#fef2f2;' : (r.diff !== 0 ? 'background:#fff7ed;' : '');
+    var borderColor = r.leaveNote ? '#ef4444' : (r.diff !== 0 ? '#f97316' : '#86efac');
+    var noteHtml = '';
+    if (r.leaveNote) noteHtml += '<div style="color:#dc2626;font-size:11px;">⚠ ' + escHtml(r.leaveNote) + '</div>';
+    if (r.newbieNote) noteHtml += '<div style="color:#d97706;font-size:11px;">⚠ ' + escHtml(r.newbieNote) + '</div>';
+    html += '<tr style="' + rowBg + '">'
+      + '<td style="white-space:nowrap;border-left:3px solid ' + borderColor + ';">' + escHtml(r.name) + '</td>'
+      + '<td style="white-space:nowrap;">' + gradeLabel(r.grade) + '</td>'
+      + '<td style="white-space:nowrap;">' + escHtml(r.classroom) + '</td>'
+      + '<td style="text-align:right;">' + r.prevAmt.toLocaleString() + '円</td>'
+      + '<td style="text-align:right;font-weight:600;">' + (r.leaveNote ? '<span style="color:#6b7280;">0円の可能性</span>' : r.nextAmt.toLocaleString() + '円') + '</td>'
+      + '<td style="text-align:right;">' + (r.leaveNote ? '—' : diffStr) + '</td>'
+      + '<td style="font-size:11px;color:var(--text-muted);">' + escHtml(r.breakdown) + (noteHtml ? '</td><td>' + noteHtml : '') + '</td>'
+      + '</tr>';
+  });
+  html += '</tbody></table>';
+
+  var changed = rows.filter(function(r){ return r.diff !== 0; }).length;
+  html = '<div style="margin-bottom:8px;font-size:13px;color:var(--text-muted);">変化あり: <strong>' + changed + '名</strong>　変化なし: <strong>' + (rows.length - changed) + '名</strong></div>' + html;
+
+  document.getElementById('check-result').innerHTML = html;
+  toast('📅 翌月予測を表示しました（' + rows.length + '名）');
+}
+
+function gradeLabel(g) {
+  var map = {11:'小1',12:'小2',13:'小3',14:'小4',15:'小5',16:'小6',
+             21:'中1',22:'中2',23:'中3',31:'高1',32:'高2',33:'高3'};
+  return map[g] || ('学年' + g);
+}
+
+var _currentFilter = 'all';
+
+// ===================== 結果の並べ替え（生徒ごと＋兄弟隣接＋深刻度順） =====================
+var LEVEL_RANK = { 'error': 0, 'warning': 1, 'confirm': 2, 'info': 3 };
+
+function sortAlertsForDisplay(alerts) {
+  // 1. personKey ごとに生徒グループ化（出現順を保持）
+  var groupMap = {};   // personKey -> { key, alerts: [], minRank, order }
+  var order = 0;
+  alerts.forEach(function(a) {
+    var k = a.personKey || '';
+    if (!groupMap[k]) { groupMap[k] = { key: k, alerts: [], minRank: 99, order: order++ }; }
+    groupMap[k].alerts.push(a);
+    var r = LEVEL_RANK[a.level]; if (r === undefined) r = 9;
+    if (r < groupMap[k].minRank) groupMap[k].minRank = r;
+  });
+
+  // 2. 各グループ内をレベル順（エラー→警告→確認）にソート
+  Object.keys(groupMap).forEach(function(k) {
+    groupMap[k].alerts.sort(function(x, y) {
+      var rx = LEVEL_RANK[x.level]; if (rx === undefined) rx = 9;
+      var ry = LEVEL_RANK[y.level]; if (ry === undefined) ry = 9;
+      return rx - ry;
+    });
+  });
+
+  // 3. グループを深刻度降順（minRank昇順）に並べる。同深刻度は元の出現順。
+  var groups = Object.keys(groupMap).map(function(k){ return groupMap[k]; });
+  groups.sort(function(a, b) {
+    if (a.minRank !== b.minRank) return a.minRank - b.minRank;
+    return a.order - b.order;
+  });
+
+  // 4. 兄弟隣接：下の子グループ（siblingUpperKeys を持つC5）を、最初の上の子グループの直後に差し込む
+  //    まず「下の子グループ → 上の子key」の対応を作る
+  var lowerToUpper = {}; // 下の子personKey -> 上の子personKey（最初の1件）
+  groups.forEach(function(g) {
+    g.alerts.forEach(function(a) {
+      if (a.siblingUpperKeys && a.siblingUpperKeys.length > 0 && !lowerToUpper[g.key]) {
+        lowerToUpper[g.key] = a.siblingUpperKeys[0];
+      }
+    });
+  });
+
+  // 下の子グループを一旦取り出し、上の子グループの直後に挿入する
+  var lowerKeys = Object.keys(lowerToUpper);
+  if (lowerKeys.length > 0) {
+    // key -> group の索引（現在のgroups配列から）
+    var byKey = {};
+    groups.forEach(function(g){ byKey[g.key] = g; });
+    // 下の子グループを除いた基本配列
+    var lowerSet = {}; lowerKeys.forEach(function(k){ lowerSet[k] = true; });
+    var base = groups.filter(function(g){ return !lowerSet[g.key]; });
+    // 結果を組み立て：各グループを置きつつ、上の子の直後にぶら下げる下の子を挿入
+    var upperToLowers = {}; // 上の子key -> [下の子group...]
+    lowerKeys.forEach(function(lk) {
+      var uk = lowerToUpper[lk];
+      if (!upperToLowers[uk]) upperToLowers[uk] = [];
+      if (byKey[lk]) upperToLowers[uk].push(byKey[lk]);
+    });
+    var result = [];
+    base.forEach(function(g) {
+      result.push(g);
+      if (upperToLowers[g.key]) {
+        upperToLowers[g.key].forEach(function(lg){ result.push(lg); });
+      }
+    });
+    // 上の子がグループに存在しない（請求書にいるがアラートなし等）下の子は末尾に残す
+    lowerKeys.forEach(function(lk) {
+      var uk = lowerToUpper[lk];
+      if (!byKey[uk] && byKey[lk] && result.indexOf(byKey[lk]) < 0) {
+        result.push(byKey[lk]);
+      }
+    });
+    groups = result;
+  }
+
+  // 5. フラット化して返す
+  var flat = [];
+  groups.forEach(function(g){ g.alerts.forEach(function(a){ flat.push(a); }); });
+  return flat;
+}
+
+function renderResults(curMonth) {
+  _lastMonth = curMonth;
+  var errorCount   = _alerts.filter(function(a){ return a.level === 'error'   && getDisplayMode(a.personKey, a.checkId) === 'detect'; }).length;
+  var warningCount = _alerts.filter(function(a){ return a.level === 'warning' && getDisplayMode(a.personKey, a.checkId) === 'detect'; }).length;
+  var confirmCount = _alerts.filter(function(a){ return a.level === 'confirm' && getDisplayMode(a.personKey, a.checkId) === 'detect'; }).length;
+  var infoCount    = _alerts.filter(function(a){ return a.level === 'info'    && getDisplayMode(a.personKey, a.checkId) === 'detect'; }).length;
+  var okCount      = (_csv.current && _csv.current.rows) ? _csv.current.rows.length : 0;
+
+  var html = '';
+
+  // 先月データなし時のスキップ通知
+  if (typeof _noPrevMode !== 'undefined' && _noPrevMode) {
+    html += '<div style="background:#fef9c3;border:1px solid #fde047;border-radius:6px;padding:8px 14px;margin-bottom:10px;font-size:12px;color:#713f12;">'
+      + '⚠️ <strong>先月データなし</strong> — B1・B2・B3・B4・B5 は先月データとの比較が必要なためスキップしています。'
+      + '</div>';
+  }
+
+  // サマリーバー
+  html += '<div class="summary-bar">';
+  html += '<div class="summary-chip chip-error"><span class="num">' + errorCount + '</span> エラー</div>';
+  html += '<div class="summary-chip chip-warn"><span class="num">' + warningCount + '</span> 警告</div>';
+  html += '<div class="summary-chip chip-confirm"><span class="num">' + confirmCount + '</span> 確認</div>';
+  html += '<div class="summary-chip chip-ok"><span class="num">' + okCount + '</span> 対象件数（当月）</div>';
+  if (_csv.current && _csv.current.rows && _csv.current.rows[0]) {
+    html += '<div style="margin-left:auto;font-size:12px;color:var(--text-muted);align-self:center;">';
+    html += '請求月：' + _csv.current.rows[0]['請求年'] + '年' + curMonth + '月</div>';
+  }
+  html += '</div>';
+
+  if (_alerts.length === 0) {
+    html += '<div class="card"><div style="text-align:center;padding:30px;color:var(--green-dark);font-weight:700;font-size:15px;">✅ アラートなし。全件正常です。</div></div>';
+  } else {
+    // フィルターバー
+    html += '<div class="filter-bar">';
+    html += '<button class="filter-btn" id="fbtn-all" onclick="filterAlerts(\'all\')">すべて（' + _alerts.length + '）</button>';
+    html += '<span style="margin-left:12px;font-size:12px;color:#166534;font-weight:600;">✅ 問題なし ' + _okStudents.length + '名</span>';
+    html += '<button class="filter-btn" id="fbtn-error" onclick="filterAlerts(\'error\')">🔴 エラー（' + errorCount + '）</button>';
+    html += '<button class="filter-btn" id="fbtn-warning" onclick="filterAlerts(\'warning\')">🟡 警告（' + warningCount + '）</button>';
+    html += '<button class="filter-btn" id="fbtn-confirm" onclick="filterAlerts(\'confirm\')">🟡 確認（' + confirmCount + '）</button>';
+    html += '</div>';
+
+    html += '<div class="card" style="padding:0;overflow:hidden;">';
+    html += '<table class="alert-table" id="alert-table">';
+    html += '<thead><tr><th>レベル</th><th>ID</th><th>生徒名</th><th>学年</th><th>教室</th><th>請求金額</th><th>差額</th><th>内容</th><th>表示設定</th><th>メモ</th></tr></thead><tbody>';
+
+    // 生徒ごと＋兄弟隣接＋深刻度順に並べ替えて描画
+    var _sortedAlerts = sortAlertsForDisplay(_alerts);
+    _sortedAlerts.forEach(function(a, idx) {
+      var levelLabel = a.level === 'error' ? '<span class="badge badge-red">エラー</span>'
+                     : a.level === 'warning' ? '<span class="badge badge-amber">警告</span>'
+                     : a.level === 'confirm' ? '<span class="badge badge-confirm">確認</span>'
+                     : '<span class="badge badge-blue">情報</span>';
+      var pKey = a.personKey || '';
+      var hasMemo = getMemo(pKey, a.checkId);
+      var memoBtnClass = 'btn-memo' + (hasMemo ? ' has-memo' : '');
+      var memoBtnLabel = hasMemo ? 'メモあり' : 'メモ';
+      var displayMode = getDisplayMode(pKey, a.checkId);
+      var modeClass = displayMode !== 'detect' ? ' mode-' + displayMode : '';
+      var modeSelectHtml = '<select class="mode-select' + (displayMode !== 'detect' ? ' mode-' + displayMode : '') + '" onchange="onModeChange(this,' + idx + ',&quot;' + escAttr(pKey) + '&quot;,&quot;' + escAttr(a.checkId) + '&quot;)">'
+        + '<option value="detect"' + (displayMode === 'detect' ? ' selected' : '') + '>次回も検知</option>'
+        + '<option value="gray"'   + (displayMode === 'gray'   ? ' selected' : '') + '>グレーアウト</option>'
+        + '<option value="hide"'   + (displayMode === 'hide'   ? ' selected' : '') + '>表示しない</option>'
+        + '</select>';
+      html += '<tr class="level-' + a.level + modeClass + '" data-level="' + a.level + '" data-idx="' + idx + '" data-personkey="' + escAttr(pKey) + '" data-checkid="' + a.checkId + '">'
+        + '<td>' + levelLabel + '</td>'
+        + (function(){
+            var spec = SPEC_LIST.filter(function(s){ return s.id === a.checkId; })[0];
+            var tip = spec && spec.tooltip ? escAttr(spec.tooltip) : '';
+            if (!tip) return '<td style="font-weight:700;color:var(--text-muted);">' + escHtml(a.checkId) + '</td>';
+            return '<td style="font-weight:700;color:var(--text-muted);">'
+              + '<span class="id-badge-wrap" data-tip="' + tip + '" onmouseenter="showTip(event,this)" onmouseleave="hideTip()">'
+              + escHtml(a.checkId) + '</span></td>';
+          })()
+        + '<td style="white-space:nowrap;">' + a.name + '</td>'
+        + '<td style="white-space:nowrap;">' + gradeLabel(a.grade) + '</td>'
+        + (function(){ var c=_masterClassroomMap[a.personKey]||''; return '<td style="white-space:nowrap;font-size:11px;color:var(--text-muted);">' + (c==='北久里浜'?'北久里浜':c==='久里浜'?'京急久里浜駅前':escHtml(c)||'—') + '</td>'; })()
+        + '<td style="text-align:right;">' + a.amount.toLocaleString() + '</td>'
+        + '<td style="text-align:right;' + (a.diff !== null && a.diff < 0 ? 'color:#dc2626;' : '') + '">'
+          + (a.diff !== null ? (a.diff > 0 ? '+' : '') + a.diff.toLocaleString() : '—') + '</td>'
+        + '<td style="font-size:12px;">' + a.msg
+          + (a.checkId === 'C5' && a.siblingCandidateNames && a.siblingCandidateNames.length > 0
+            ? '<div class="sibling-chips" style="margin-top:5px;">' +
+              a.siblingCandidateNames.map(function(cn, ci) {
+                var lowerN = a.lowerName || '';
+                var cnEsc = escAttr(cn);
+                var lowerEsc = escAttr(lowerN);
+                var label = escHtml(cn);
+                return '<span class="sibling-chip">' + label + '<button class="chip-excl-btn" title="兄弟でない" onclick="excludeSibling(this,&quot;' + lowerEsc + '&quot;,&quot;' + cnEsc + '&quot;)">✕ 兄弟でない</button></span>';
+              }).join('') + '</div>'
+            : '')
+          + (hasMemo ? '<br><span style="color:var(--blue-dark);font-size:11px;">' + escHtml(hasMemo) + '</span>' : '') + '</td>'
+        + '<td>' + modeSelectHtml + '</td>'
+        + '<td><button class="' + memoBtnClass + '" onclick="toggleMemoRow(' + idx + ',&quot;' + escAttr(pKey) + '&quot;,&quot;' + a.checkId + '&quot;)">' + memoBtnLabel + '</button></td>'
+        + '</tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  // ===================== 問題なし（緑）セクション =====================
+  if (_okStudents.length > 0) {
+    html += '<div style="margin-top:12px;">'
+      + '<button class="ok-section-toggle" onclick="toggleOkSection(this)" style="'
+      + 'width:100%;text-align:left;background:#f0fdf4;border:1.5px solid #86efac;border-radius:8px;'
+      + 'padding:8px 14px;cursor:pointer;font-size:13px;color:#166534;font-weight:600;">'
+      + '✅ 問題なし（' + _okStudents.length + '名）<span style="float:right;font-weight:400;font-size:12px;">▼ 展開</span>'
+      + '</button>'
+      + '<div class="ok-section-body" style="display:none;margin-top:4px;">'
+      + '<table class="alert-table"><thead><tr>'
+      + '<th>生徒名</th><th>学年</th><th>教室</th><th>請求金額</th><th>チェック根拠</th>'
+      + '</tr></thead><tbody>';
+    _okStudents.forEach(function(s) {
+      var clsLabel = s.classroom === '北久里浜' ? '北久里浜教室'
+                   : s.classroom === '久里浜'   ? '京急久里浜駅前教室'
+                   : (s.classroom || '—');
+      html += '<tr style="background:#f0fdf4;">'
+        + '<td style="white-space:nowrap;border-left:3px solid #22c55e;">' + escHtml(s.name) + '</td>'
+        + '<td style="white-space:nowrap;">' + gradeLabel(s.grade) + '</td>'
+        + '<td style="white-space:nowrap;">' + escHtml(clsLabel) + '</td>'
+        + '<td style="text-align:right;">' + s.amount.toLocaleString() + '円</td>'
+        + (function(){
+            var aLine = s.aDetail ? 'A: ' + s.aDetail.breakdown + ' = ' + s.aDetail.expected.toLocaleString() + '円 ✅' : 'A: マスタ未突合';
+            var bLine = s.bDetail ? 'B: 先月' + s.bDetail.prevAmount.toLocaleString() + '円 → 変化なし ✅' : 'B: 先月データなし（新入生候補）';
+            var tipText = escAttr(aLine + '\n' + bLine);
+            return '<td style="font-size:11px;color:#166534;cursor:default;" data-tip="' + tipText + '" onmouseenter="showTip(event,this)" onmouseleave="hideTip()">ℹ ホバーで確認</td>';
+          })()
+        + '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+  }
+
+  document.getElementById('check-result').innerHTML = html;
+  _currentFilter = 'all';
+  updateFilterBtns();
+  toast('✅ チェック完了（' + _alerts.length + '件のアラート）');
+}
+
+function filterAlerts(level) {
+  _currentFilter = level;
+  document.querySelectorAll('#alert-table tbody tr').forEach(function(tr) {
+    var show = level === 'all' || tr.dataset.level === level;
+    tr.style.display = show ? '' : 'none';
+  });
+  updateFilterBtns();
+}
+
+function updateFilterBtns() {
+  ['all','error','warning','info'].forEach(function(l) {
+    var btn = document.getElementById('fbtn-' + l);
+    if (!btn) return;
+    btn.className = 'filter-btn';
+    if (_currentFilter === l) {
+      btn.className += ' active-' + (l === 'all' ? 'all' : (l === 'error' ? 'error' : (l === 'warning' ? 'warn' : 'info')));
+    }
+  });
+}
+
+// ===================== 金額マスタ編集テーブル =====================
+
+// _rawMasterRows: スプレから取得した生データ（GASのカラム定義と完全一致）
+// カラム: 区分・種別・グレードコード・対象月・金額
+var _rawMasterRows = [];
+
+function renderMaster() {
+  // _rawMasterRows がある場合はそちらを優先（スプレから読み込んだ場合）
+  // なければ DEFAULT_MASTER から変換して表示
+  if (_rawMasterRows.length === 0) {
+    _rawMasterRows = buildRawMasterFromDefault();
+  }
+  renderMasterEditTable();
+}
+
+function buildRawMasterFromDefault() {
+  var rows = [];
+  _master.basic.forEach(function(r) {
+    rows.push({
+      '区分': r.label.indexOf('CA') >= 0 ? '基本月謝' : '基本月謝',
+      '種別': r.label,
+      'グレードコード': Array.isArray(r.gradeRange) ? r.gradeRange.join(',') : r.gradeRange,
+      '対象月': r.months === 'all' ? 'all' : r.months.join(','),
+      '金額': r.amount
+    });
+  });
+  _master.special.forEach(function(r) {
+    rows.push({
+      '区分': '特別費用',
+      '種別': r.label,
+      'グレードコード': Array.isArray(r.gradeRange) ? r.gradeRange.join(',') : r.gradeRange,
+      '対象月': r.months === 'all' ? 'all' : r.months.join(','),
+      '金額': r.amount
+    });
+  });
+  _master.sibling.forEach(function(r) {
+    rows.push({
+      '区分': '兄弟割引',
+      '種別': r.label,
+      'グレードコード': '',
+      '対象月': r.months.join(','),
+      '金額': r.amount
+    });
+  });
+  rows.push({
+    '区分': 'CA入会金',
+    '種別': 'CA入会金（初月のみ）',
+    'グレードコード': 'ca',
+    '対象月': 'all',
+    '金額': _master.ca_entry_fee || 8250
+  });
+  return rows;
+}
+
+function renderMasterEditTable() {
+  var tbody = document.getElementById('master-tbody');
+  if (!tbody) return;
+  var html = '';
+  _rawMasterRows.forEach(function(r, idx) {
+    html += '<tr data-idx="' + idx + '">'
+      + '<td><input type="text" value="' + escAttr(r['区分'] || '') + '" onchange="updateMasterRow(' + idx + ',&quot;区分&quot;,this.value)" style="width:80px;"></td>'
+      + '<td><input type="text" value="' + escAttr(r['種別'] || '') + '" onchange="updateMasterRow(' + idx + ',&quot;種別&quot;,this.value)" style="width:180px;"></td>'
+      + '<td><input type="text" value="' + escAttr(String(r['グレードコード'] || '')) + '" onchange="updateMasterRow(' + idx + ',&quot;グレードコード&quot;,this.value)" style="width:120px;" placeholder="例: 11,12,13 または ca"></td>'
+      + '<td><input type="text" value="' + escAttr(String(r['対象月'] || '')) + '" onchange="updateMasterRow(' + idx + ',&quot;対象月&quot;,this.value)" style="width:120px;" placeholder="all または 4,5,6"></td>'
+      + '<td><input type="number" value="' + (parseInt(r['金額'],10)||0) + '" onchange="updateMasterRow(' + idx + ',&quot;金額&quot;,this.value)" style="width:80px;text-align:right;"></td>'
+      + '<td><button class="btn-sm btn-del" onclick="deleteMasterRow(' + idx + ')">削除</button></td>'
+      + '</tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function updateMasterRow(idx, key, val) {
+  if (!_rawMasterRows[idx]) return;
+  _rawMasterRows[idx][key] = key === '金額' ? parseInt(val, 10) || 0 : val;
+}
+
+function deleteMasterRow(idx) {
+  _rawMasterRows.splice(idx, 1);
+  renderMasterEditTable();
+}
+
+function addMasterRow() {
+  _rawMasterRows.push({ '区分': '', '種別': '', 'グレードコード': '', '対象月': 'all', '金額': 0 });
+  renderMasterEditTable();
+  // 最下部にスクロール
+  var tbody = document.getElementById('master-tbody');
+  if (tbody) tbody.lastElementChild.scrollIntoView({ behavior: 'smooth' });
+}
+
+function saveMasterToGas() {
+  var url = (document.getElementById('gas-url') || {}).value || localStorage.getItem(GAS_URL_KEY) || '';
+  if (!url) { toast('⚠️ 除外・メモ管理タブでGAS URLを先に設定してください'); return; }
+
+  var statusEl = document.getElementById('master-save-status');
+  statusEl.className = 'edit-status';
+  statusEl.textContent = '保存中...';
+
+  var btn = document.getElementById('btn-save-master');
+  btn.disabled = true;
+
+  fetch(url, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'saveMaster', rows: _rawMasterRows })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(res) {
+    btn.disabled = false;
+    if (res.ok) {
+      statusEl.className = 'edit-status ok';
+      statusEl.textContent = '保存完了（' + new Date().toLocaleTimeString('ja-JP') + '）';
+      miniToast('金額マスタを保存しました');
+      // 保存後にスプレから再読み込みして整合確認
+      fetchFromSpread();
+    } else if (res.error && res.error.indexOf('locked') === 0) {
+      statusEl.className = 'edit-status err';
+      statusEl.textContent = '⚠️ 他のユーザーが書き込み中です。2秒後に再試行します...';
+      setTimeout(saveMasterToGas, 2000);
+    } else {
+      statusEl.className = 'edit-status err';
+      statusEl.textContent = '❌ エラー: ' + (res.error || '不明');
+    }
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    statusEl.className = 'edit-status err';
+    statusEl.textContent = '❌ 通信エラー: ' + err.message;
+  });
+}
+
+// ===================== チェック項目編集テーブル =====================
+
+var _rawCheckRows = [];
+
+function renderSpec() {
+  if (_rawCheckRows.length === 0) {
+    _rawCheckRows = SPEC_LIST.map(function(s) {
+      return { 'ID': s.id, 'カテゴリ': s.cat, 'レベル': s.level, '説明': s.desc, '有効': true };
+    });
+  }
+  renderChecksEditTable();
+}
+
+function renderChecksEditTable() {
+  var tbody = document.getElementById('checks-tbody');
+  if (!tbody) return;
+  var levelOpts = ['エラー', '警告', '確認'];
+  var html = '';
+  _rawCheckRows.forEach(function(r, idx) {
+    var checked = r['有効'] !== false && r['有効'] !== 'FALSE';
+    var levelHtml = '<select onchange="updateCheckRow(' + idx + ',&quot;レベル&quot;,this.value)">';
+    levelOpts.forEach(function(l) {
+      levelHtml += '<option value="' + l + '"' + (r['レベル'] === l ? ' selected' : '') + '>' + l + '</option>';
+    });
+    levelHtml += '</select>';
+    html += '<tr style="' + (!checked ? 'opacity:0.45;' : '') + '">'
+      + '<td style="text-align:center;"><label class="toggle-switch"><input type="checkbox"' + (checked ? ' checked' : '') + ' onchange="updateCheckRow(' + idx + ',&quot;有効&quot;,this.checked)"><span class="toggle-slider"></span></label></td>'
+      + '<td style="font-weight:700;color:var(--text-muted);white-space:nowrap;">' + escHtml(r['ID']) + '</td>'
+      + '<td><span class="badge badge-gray">' + escHtml(r['カテゴリ']) + '</span></td>'
+      + '<td>' + levelHtml + '</td>'
+      + '<td style="font-size:12px;">' + escHtml(r['説明']) + '</td>'
+      + '</tr>';
+  });
+  tbody.innerHTML = html;
+}
+
+function updateCheckRow(idx, key, val) {
+  if (!_rawCheckRows[idx]) return;
+  _rawCheckRows[idx][key] = val;
+  if (key === '有効') {
+    // trのopacityをその場で更新
+    var tbody = document.getElementById('checks-tbody');
+    if (tbody) {
+      var rows = tbody.querySelectorAll('tr');
+      if (rows[idx]) rows[idx].style.opacity = val ? '1' : '0.45';
+    }
+    // チェックオーバーライドも即時反映
+    _checkOverrides[_rawCheckRows[idx]['ID']] = {
+      enabled: val,
+      level: _rawCheckRows[idx]['レベル']
+    };
+  }
+}
+
+function saveChecksToGas() {
+  var url = (document.getElementById('gas-url') || {}).value || localStorage.getItem(GAS_URL_KEY) || '';
+  if (!url) { toast('⚠️ 除外・メモ管理タブでGAS URLを先に設定してください'); return; }
+
+  var statusEl = document.getElementById('checks-save-status');
+  statusEl.className = 'edit-status';
+  statusEl.textContent = '保存中...';
+
+  var btn = document.getElementById('btn-save-checks');
+  btn.disabled = true;
+
+  fetch(url, {
+    method: 'POST',
+    body: JSON.stringify({ action: 'saveChecks', rows: _rawCheckRows })
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(res) {
+    btn.disabled = false;
+    if (res.ok) {
+      statusEl.className = 'edit-status ok';
+      statusEl.textContent = '保存完了（' + new Date().toLocaleTimeString('ja-JP') + '）';
+      miniToast('チェック設定を保存しました');
+      // _checkOverrides を最新に反映
+      _checkOverrides = {};
+      _rawCheckRows.forEach(function(r) {
+        _checkOverrides[r['ID']] = { enabled: r['有効'] !== false, level: r['レベル'] };
+      });
+      fetchFromSpread();
+    } else if (res.error && res.error.indexOf('locked') === 0) {
+      statusEl.className = 'edit-status err';
+      statusEl.textContent = '⚠️ 他のユーザーが書き込み中です。2秒後に再試行します...';
+      setTimeout(saveChecksToGas, 2000);
+    } else {
+      statusEl.className = 'edit-status err';
+      statusEl.textContent = '❌ エラー: ' + (res.error || '不明');
+    }
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    statusEl.className = 'edit-status err';
+    statusEl.textContent = '❌ 通信エラー: ' + err.message;
+  });
+}
+
+// ===================== チェック仕様 =====================
+var SPEC_LIST = [
+  // カテゴリA：金額チェック
+  { id:'A1', cat:'金額',     level:'エラー', desc:'あるべき請求額（生徒マスタ＋金額マスタから積み上げ）とフォレスタ合計が不一致。算出内訳を表示',
+    tooltip:'【比較対象】生徒マスタ×金額マスタ\n【計算】月謝＋教材費＋模試代＋管理費（4/8/12月）＋受験特訓（中3juken）＋CA月謝＋CA入会金を積み上げ\n【判定】積み上げ合計 ≠ 請求書の請求金額\n【注意】komasが未取得の中3は受験特訓なし扱い（過検知防止）' },
+  { id:'A2', cat:'金額',     level:'エラー', desc:'請求金額が0円',
+    tooltip:'【比較対象】請求書の請求金額\n【判定】請求金額 = 0円\n【原因候補】請求登録漏れ・金額設定ミス' },
+  { id:'A3', cat:'金額',     level:'エラー', desc:'請求金額が異常値（200,000円超）',
+    tooltip:'【比較対象】請求書の請求金額\n【判定】請求金額 > 200,000円\n【原因候補】桁入力ミス・重複付与' },
+  // カテゴリB：請求対象チェック
+  { id:'B1', cat:'請求対象', level:'警告',   desc:'先月と請求額が変わった（差額を表示。変化の事実を示す。原因は人が判断。エラーの原因特定にも使う）',
+    tooltip:'【比較対象】今月請求書 vs 先月請求書\n【判定】同一生徒（フルネーム＋学年）の請求金額が先月と異なる\n【用途】A1エラーの原因特定補助。変化の事実を示すだけで正誤は人が判断' },
+  { id:'B2', cat:'請求対象', level:'警告',   desc:'先月CSVにいない（新入生候補）で教材費・CA入会金の過不足の可能性（付いている→新入生ですか確認／ない→付け忘れの可能性）',
+    tooltip:'【比較対象】今月請求書 vs 先月請求書（存在チェック）\n【判定】先月CSVにいない＝新入生候補。教材費・CA入会金の有無を請求額から推測\n【注意】A1は入会日をマスタから取れないため新入生初月の付け漏れを検知できない。B2がその補完' },
+  { id:'B3', cat:'請求対象', level:'警告',   desc:'先月いたが今月いない（退会処理 or 請求漏れ）',
+    tooltip:'【比較対象】今月請求書 vs 先月請求書\n【判定】先月CSVにいるが今月CSVにいない\n【原因候補】退会処理済み（正常）・請求書取り込み漏れ・生徒名表記ゆれ' },
+  { id:'B4', cat:'請求対象', level:'警告',   desc:'退会予定なのに最終月の請求がない（請求漏れ候補）',
+    tooltip:'【比較対象】生徒マスタの退会予定日 vs 今月請求書\n【判定】今月が退会予定月なのに請求書にいない\n【原因候補】最終月の請求漏れ' },
+  { id:'B5', cat:'請求対象', level:'確認',   desc:'新入生候補（生徒マスタにいて先月CSVにいない）',
+    tooltip:'【比較対象】生徒マスタ vs 先月請求書\n【判定】マスタにいるが先月CSVにいない＝今月初登場の可能性\n【用途】新入生の初月確認。B2と合わせて教材費付与漏れを確認' },
+  // カテゴリC：生徒照合チェック
+  { id:'C1', cat:'生徒照合', level:'エラー', desc:'請求書にいるが生徒マスターに未登録（フルネーム＋学年で不一致）',
+    tooltip:'【比較対象】請求書 vs 生徒マスタ\n【判定】csvMatchKey（正規化フルネーム＋学年ラベル）でマスタに該当なし\n【原因候補】名前表記ゆれ・マスタ登録漏れ・退会後も請求が残っている' },
+  { id:'C2', cat:'生徒照合', level:'エラー', desc:'退会済み（退会日経過）なのに請求書に載っている',
+    tooltip:'【比較対象】生徒マスタの退会日 vs 今月請求書\n【判定】退会日 < 今月 なのに請求書に存在\n【原因候補】フォレスタの退会処理漏れ・退会日設定ミス' },
+  { id:'C3', cat:'生徒照合', level:'エラー', desc:'同一生徒が同月に2行（重複請求）',
+    tooltip:'【比較対象】請求書内の重複チェック\n【判定】同一csvMatchKey（フルネーム＋学年）が2行以上\n【原因候補】フォレスタへの二重登録・CSV取り込みミス' },
+  { id:'C4', cat:'生徒照合', level:'エラー', desc:'学年番号が不正（11〜16・21〜23・31〜33以外）',
+    tooltip:'【比較対象】請求書の学年番号\n【有効値】11〜16（小1〜6）／21〜23（中1〜3）／31〜33（高1〜3）\n【判定】上記以外の値' },
+  { id:'C5', cat:'生徒照合', level:'確認',   desc:'生徒マスターにいるが請求書にいない（請求漏れ候補。兄弟まとめ請求の下の子は正常なのでマークで静音化）',
+    tooltip:'【比較対象】生徒マスタ vs 請求書\n【判定】マスタにいる（在籍中）が請求書にいない\n【兄弟検出】同姓で請求書にいる生徒をチップで表示。「兄弟でない」で別家族を除外登録可\n【キー】personKey＝正規化フルネーム＋学年（グレーアウト単位）' },
+  { id:'C6', cat:'生徒照合', level:'確認',   desc:'退会予定日ありなのに請求書に載っている（最終月の正常請求か手動確認）',
+    tooltip:'【比較対象】生徒マスタの退会予定日 vs 今月請求書\n【判定】退会予定日が設定済みで今月が最終月前後\n【用途】最終月の正常請求か、退会後の誤請求かを確認' },
+  // カテゴリD：手動確認チェック
+  { id:'D1', cat:'手動確認', level:'確認',   desc:'同姓同名・同学年が複数（別人の可能性。生徒番号がないため区別不可）',
+    tooltip:'【比較対象】請求書内\n【判定】同一csvMatchKey（フルネーム＋学年）が複数人\n【制約】CSVに生徒番号がないため機械的区別不可。目視確認が必要' },
+  { id:'D2', cat:'手動確認', level:'確認',   desc:'同姓・学年違いのペア（兄弟候補）',
+    tooltip:'【比較対象】請求書内\n【判定】同姓で学年が異なる生徒ペアが存在\n【用途】兄弟割引の確認。C5の兄弟候補チップと合わせて確認' },
+  { id:'D3', cat:'手動確認', level:'確認',   desc:'請求額が自分のあるべき額＋同姓兄弟候補のあるべき額と一致（兄弟まとめ請求の可能性）',
+    tooltip:'【比較対象】C5で検出した兄弟ペア\n【計算】請求書にいる子のcalcExpected合計＋請求書にいない子のcalcExpected合計\n【判定】上記合算 = 実際の請求額\n【方向】双方向対応（上の子にまとめ・下の子にまとめ両方を検知）' },
+  { id:'D4', cat:'手動確認', level:'確認',   desc:'入金未確認（請求ステータスが「承認済み」のまま）',
+    tooltip:'【比較対象】請求書のステータス列\n【判定】ステータスが「承認済み」のまま未完了\n【用途】入金消込の確認漏れ防止' },
+  { id:'D5', cat:'手動確認', level:'確認',   desc:'現金払い（口座振替・クレカ以外）',
+    tooltip:'【比較対象】請求書の支払方法列\n【判定】口座振替・クレジットカード以外の支払方法\n【用途】現金払い生徒の入金確認漏れ防止' },
+];
+
+
+
+// ===================== タブ切り替え =====================
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.tab === tabId);
+  });
+  document.querySelectorAll('.tab-panel').forEach(function(p) {
+    p.classList.toggle('active', p.id === tabId);
+  });
+}
+
+// ===================== トースト =====================
+function toast(msg, dur) {
+  var el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(el._tid);
+  el._tid = setTimeout(function() { el.classList.remove('show'); }, dur || 2200);
+}
+function miniToast(msg, dur) {
+  var el = document.getElementById('mini-toast');
+  if (!el) return;
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(el._tid);
+  el._tid = setTimeout(function() { el.classList.remove('show'); }, dur || 1800);
+}
+
+// ===================== スプレッドシート連携 =====================
+var GAS_URL_KEY = 'seikyu_gas_url';
+var KANRI_GAS_URL_KEY = 'kanri_gas_url';
+var _memos = {}; // key: sei+'|'+checkId → memo文字列
+var _students = null; // 会員管理生徒マスターキャッシュ
+
+function saveKanriGasUrl() {
+  var url = document.getElementById('kanri-gas-url').value.trim();
+  localStorage.setItem(KANRI_GAS_URL_KEY, url);
+  var statusEl = document.getElementById('kanri-sync-status');
+  if (statusEl) statusEl.textContent = url ? '✅ URL保存済み' : '';
+}
+
+function saveGasUrl() {
+  var url = document.getElementById('gas-url').value.trim();
+  localStorage.setItem(GAS_URL_KEY, url);
+}
+
+// ===================== 会員管理GAS 接続確認 =====================
+async function testKanriConnection() {
+  var url = document.getElementById('kanri-gas-url').value.trim();
+  if (!url) { toast('⚠️ URLを入力してください'); return; }
+  var statusEl = document.getElementById('kanri-sync-status');
+  statusEl.textContent = '🔄 接続確認中...';
+  try {
+    var res = await fetch(url + '?action=getStudents', { method: 'GET' });
+    var data = await res.json();
+    if (data.success && Array.isArray(data.students)) {
+      var active = data.students.filter(function(s){ return (s.status||'在籍')==='在籍'; }).length;
+      statusEl.textContent = '✅ 接続OK（在籍生徒 ' + active + '件取得）';
+    } else {
+      statusEl.textContent = '⚠️ 接続できましたがデータ取得に失敗しました';
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ 接続失敗：' + e.message;
+  }
+}
+
+// ===================== 会員管理生徒マスター取得（読み取り専用） =====================
+async function fetchStudentsFromKanri() {
+  var url = localStorage.getItem(KANRI_GAS_URL_KEY) || '';
+  if (!url) return null; // URL未設定時はnullを返す（スキップ）
+
+  try {
+    var res = await fetch(url + '?action=getStudents', { method: 'GET' });
+    var data = await res.json();
+    if (data.success && Array.isArray(data.students)) {
+      // 在籍のみ抽出（退会生徒は照合対象外）
+      return data.students.filter(function(s) {
+        return (s.status || '在籍') === '在籍';
+      });
+    }
+    return null;
+  } catch(e) {
+    console.warn('会員管理GAS取得エラー:', e);
+    return null;
+  }
+}
+
+function fetchFromSpread() {
+  var url = document.getElementById('gas-url').value.trim();
+  if (!url) { toast('⚠️ GAS URLを入力してください'); return; }
+
+  var statusEl = document.getElementById('sync-status');
+  statusEl.textContent = '🔄 読み込み中...';
+
+  fetch(url + '?action=getAll')
+    .then(function(r) { return r.json(); })
+    .then(function(json) {
+      if (!json.ok) throw new Error(json.error);
+      applySpreadData(json.data);
+      statusEl.innerHTML = '✅ 最終同期：' + new Date().toLocaleString('ja-JP');
+      toast('✅ スプレッドシートから読み込みました');
+      renderMemoList();
+    })
+    .catch(function(err) {
+      statusEl.textContent = '❌ 読み込みエラー：' + err.message;
+      toast('❌ 読み込み失敗');
+    });
+}
+
+function applySpreadData(data) {
+  // 生データを保存（編集テーブル用）
+  if (data.master && data.master.length > 0) {
+    _rawMasterRows = data.master;
+    buildMasterRows(_rawMasterRows); // ★スプレ→MASTER_ROWS構築（計算の正データ）
+    renderMasterEditTable();
+  }
+  if (data.checks && data.checks.length > 0) {
+    _rawCheckRows = data.checks;
+    renderChecksEditTable();
+  }
+
+  // 金額マスタ適用
+  if (data.master && data.master.length > 0) {
+    // スプレのマスタデータをDEFAULT_MASTERの形式に変換してオーバーライド
+    var basic = [], special = [], sibling = [];
+    var caEntryFee = 8250;
+    data.master.forEach(function(row) {
+      var grades = row['グレードコード'] ? row['グレードコード'].toString() : '';
+      var months = row['対象月'] ? row['対象月'].toString() : 'all';
+      var amount = parseInt(row['金額'], 10) || 0;
+      var gradeArr = grades === '' ? [] :
+                     grades === 'all' || grades === 'ca' || grades.indexOf('ca') === 0 ? grades :
+                     grades.split(',').map(function(g){ return parseInt(g.trim(),10); });
+
+      var entry = {
+        label: row['種別'],
+        gradeRange: (typeof gradeArr === 'string') ? gradeArr : gradeArr,
+        months: months === 'all' ? 'all' : months.split(',').map(function(m){ return parseInt(m.trim(),10); }),
+        amount: amount
+      };
+
+      if (row['区分'] === '基本月謝') basic.push(entry);
+      else if (row['区分'] === '特別費用') special.push(entry);
+      else if (row['区分'] === '兄弟割引') sibling.push(entry);
+      else if (row['区分'] === 'CA入会金') caEntryFee = amount;
+    });
+    if (basic.length)   _master.basic   = basic;
+    if (special.length) _master.special = special;
+    if (sibling.length) _master.sibling = sibling;
+    _master.ca_entry_fee = caEntryFee;
+    renderMaster();
+  }
+
+  // 兄弟除外ペア適用
+  if (data.siblingExclusions && data.siblingExclusions.length > 0) {
+    _siblingExcl = new Set();
+    data.siblingExclusions.forEach(function(ex) {
+      if (ex.nameA && ex.nameB) {
+        _siblingExcl.add(siblingExclKey(ex.nameA, ex.nameB));
+      }
+    });
+    renderSiblingExclList();
+  }
+
+  // チェック項目適用（有効/無効）
+  if (data.checks && data.checks.length > 0) {
+    _checkOverrides = {};
+    data.checks.forEach(function(row) {
+      _checkOverrides[row['ID']] = {
+        enabled: row['有効'] !== false && row['有効'] !== 'FALSE' && row['有効'] !== false,
+        level:   row['レベル'] || null
+      };
+    });
+  }
+
+  // 対応メモ適用
+  if (data.memos) {
+    _memos = {};
+    data.memos.forEach(function(m) {
+      // 新形式: fullName|grade|checkId。旧形式(m.sei)も後方互換で受ける。
+      var pKey = (m.fullName != null) ? (normalizeName(m.fullName) + '|' + (m.grade || '')) : (m.sei || '');
+      var key = pKey + '|' + m.checkId;
+      _memos[key] = m.memo;
+    });
+  }
+}
+
+// チェック項目オーバーライド（スプレの「有効」列で制御）
+var _checkOverrides = {};
+
+// 兄弟除外ペアのSet（"氏名A|||氏名B" 形式。氏名A < 氏名B でソート正規化済み）
+var _siblingExcl = new Set();
+
+// 兄弟除外キーの正規化（フルネームのみ。学年含めない。2名をソートして||| で連結）
+function siblingExclKey(nameA, nameB) {
+  var a = normalizeName(nameA), b = normalizeName(nameB);
+  return a < b ? a + '|||' + b : b + '|||' + a;
+}
+
+// 除外ペアの判定
+function isSiblingExcluded(nameA, nameB) {
+  return _siblingExcl.has(siblingExclKey(nameA, nameB));
+}
+
+// 除外ペアをローカルに追加してGAS保存
+function addSiblingExclusion(nameA, nameB) {
+  var key = siblingExclKey(nameA, nameB);
+  _siblingExcl.add(key);
+  // GAS保存
+  var url = (document.getElementById('gas-url') || {}).value || localStorage.getItem(GAS_URL_KEY) || '';
+  if (url) {
+    var sorted = key.split('|||');
+    fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveSiblingExclusion', nameA: sorted[0], nameB: sorted[1] })
+    }).catch(function(e) { console.warn('兄弟除外GAS保存エラー', e); });
+  }
+  renderSiblingExclList();
+}
+
+// チップボタンから呼ぶラッパー（スピナー表示→除外登録→runCheck）
+function excludeSibling(btn, nameA, nameB) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  addSiblingExclusion(nameA, nameB);
+  runCheck();
+}
+
+// 除外ペアをローカルから削除してGAS削除
+function removeSiblingExclusion(nameA, nameB) {
+  var key = siblingExclKey(nameA, nameB);
+  _siblingExcl.delete(key);
+  // GAS削除
+  var url = (document.getElementById('gas-url') || {}).value || localStorage.getItem(GAS_URL_KEY) || '';
+  if (url) {
+    var sorted = key.split('|||');
+    fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteSiblingExclusion', nameA: sorted[0], nameB: sorted[1] })
+    }).catch(function(e) { console.warn('兄弟除外GAS削除エラー', e); });
+  }
+  renderSiblingExclList();
+  // 再描画（除外解除で候補が戻るため）
+  if (_lastMonth > 0) renderResults(_lastMonth);
+}
+
+function isCheckEnabled(checkId) {
+  if (_checkOverrides[checkId] === undefined) return true;
+  return _checkOverrides[checkId].enabled !== false;
+}
+
+// メモキー
+function memoKey(personKey, checkId) { return personKey + '|' + checkId; }
+
+function getMemo(personKey, checkId) {
+  var entry = _memos[memoKey(personKey, checkId)] || _memos[personKey + '|ALL'] || null;
+  if (!entry) return null;
+  // 後方互換：オブジェクト形式でも文字列を返す
+  return typeof entry === 'string' ? entry : (entry.memo || '');
+}
+// 表示モード管理（'detect'|'gray'|'hide'）
+var _displayModes = {};
+function getDisplayMode(personKey, checkId) {
+  return _displayModes[memoKey(personKey, checkId)] || 'detect';
+}
+// personKey(=フルネーム|学年) を {fullName, grade} に分解
+function splitPersonKey(personKey) {
+  var parts = String(personKey || '').split('|');
+  var grade = parts.length > 1 ? parts[parts.length - 1] : '';
+  var fullName = parts.slice(0, parts.length - 1).join('|') || parts[0] || '';
+  return { fullName: fullName, grade: grade };
+}
+
+function setDisplayMode(personKey, checkId, mode) {
+  var key = memoKey(personKey, checkId);
+  if (mode === 'detect') {
+    delete _displayModes[key];
+  } else {
+    _displayModes[key] = mode;
+  }
+  localStorage.setItem('seikyu_display_modes', JSON.stringify(_displayModes));
+  // GAS同期
+  var url = (document.getElementById('gas-url') || {}).value || localStorage.getItem(GAS_URL_KEY) || '';
+  if (url) {
+    var p = splitPersonKey(personKey);
+    if (mode === 'detect') {
+      fetch(url, { method: 'POST', body: JSON.stringify({ action: 'deleteDisplayMode', fullName: p.fullName, grade: p.grade, checkId: checkId }) })
+        .catch(function(e){ console.warn('GAS同期失敗', e); });
+    } else {
+      fetch(url, { method: 'POST', body: JSON.stringify({ action: 'saveDisplayMode', fullName: p.fullName, grade: p.grade, checkId: checkId, mode: mode }) })
+        .catch(function(e){ console.warn('GAS同期失敗', e); });
+    }
+  }
+}
+
+function saveMemoLocal(personKey, checkId, memo) {
+  _memos[memoKey(personKey, checkId)] = memo;
+  localStorage.setItem('seikyu_memos', JSON.stringify(_memos));
+
+  // GAS連携があれば同期
+  var url = (document.getElementById('gas-url') || {}).value || localStorage.getItem(GAS_URL_KEY) || '';
+  if (url) {
+    var p = splitPersonKey(personKey);
+    fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveMemo', fullName: p.fullName, grade: p.grade, checkId: checkId, memo: memo })
+    }).catch(function(e){ console.warn('GAS同期失敗', e); });
+  }
+}
+
+function deleteMemoLocal(personKey, checkId) {
+  delete _memos[memoKey(personKey, checkId)];
+  localStorage.setItem('seikyu_memos', JSON.stringify(_memos));
+
+  var url = (document.getElementById('gas-url') || {}).value || localStorage.getItem(GAS_URL_KEY) || '';
+  if (url) {
+    var p = splitPersonKey(personKey);
+    fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteMemo', fullName: p.fullName, grade: p.grade, checkId: checkId })
+    }).catch(function(e){ console.warn('GAS同期失敗', e); });
+  }
+}
+
+function renderMemoList() {
+  var el = document.getElementById('memo-list');
+  if (!el) return;
+  var keys = Object.keys(_memos);
+  if (keys.length === 0) { el.innerHTML = '（まだ登録がありません）'; return; }
+
+  var modeLabels = { 'detect': '次回も検知', 'gray': 'グレーアウト', 'hide': '表示しない' };
+  var html = '<table class="preview-table"><tr><th>氏名・学年</th><th>チェックID</th><th>メモ</th><th>表示設定</th><th></th></tr>';
+  keys.forEach(function(k) {
+    var parts = k.split('|');
+    var cid = parts[parts.length - 1];                    // 末尾=checkId
+    var personKey = parts.slice(0, parts.length - 1).join('|'); // 残り=フルネーム|学年
+    var pp = splitPersonKey(personKey);
+    var personLabel = pp.fullName + (pp.grade ? '（' + pp.grade + '）' : '');
+    var memoText = typeof _memos[k] === 'string' ? _memos[k] : (_memos[k].memo || '');
+    var mode = _displayModes[k] || 'detect';
+    var modeLabel = modeLabels[mode] || mode;
+    html += '<tr>'
+      + '<td>' + escHtml(personLabel) + '</td>'
+      + '<td><span class="badge badge-gray">' + cid + '</span></td>'
+      + '<td>' + escHtml(memoText) + '</td>'
+      + '<td><span class="badge-mode">' + modeLabel + '</span></td>'
+      + '<td><button class="btn-sm btn-del" onclick="deleteMemoLocal(&quot;' + escAttr(personKey) + '&quot;,&quot;' + escAttr(cid) + '&quot;);renderMemoList();renderResults(_lastMonth);">削除</button></td>'
+      + '</tr>';
+  });
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+function renderSiblingExclList() {
+  var el = document.getElementById('sibling-excl-list');
+  if (!el) return;
+  if (_siblingExcl.size === 0) { el.innerHTML = '（まだ登録がありません）'; return; }
+
+  var html = '<table class="preview-table"><tr><th>氏名A</th><th>氏名B</th><th></th></tr>';
+  _siblingExcl.forEach(function(key) {
+    var parts = key.split('|||');
+    var nameA = parts[0], nameB = parts[1] || '';
+    html += '<tr>'
+      + '<td>' + escHtml(nameA) + '</td>'
+      + '<td>' + escHtml(nameB) + '</td>'
+      + '<td><button class="btn-sm btn-del" onclick="removeSiblingExclusion(&quot;' + escAttr(nameA) + '&quot;,&quot;' + escAttr(nameB) + '&quot;)">解除</button></td>'
+      + '</tr>';
+  });
+  html += '</table>';
+  el.innerHTML = html;
+}
+
+function buildOkDetailHtml(s) {
+  var lines = [];
+  if (s.aDetail) {
+    lines.push('A: ' + s.aDetail.breakdown + ' = ' + s.aDetail.expected.toLocaleString() + '円 ✅');
+  } else {
+    lines.push('A: マスタ未突合');
+  }
+  if (s.bDetail) {
+    lines.push('B: 先月' + s.bDetail.prevAmount.toLocaleString() + '円 → 変化なし ✅');
+  } else {
+    lines.push('B: 先月データなし（新入生候補）');
+  }
+  return lines.join('<br>');
+}
+
+function showTip(e, el) {
+  var tip = document.getElementById('global-tooltip');
+  if (!tip) return;
+  tip.innerHTML = (el.dataset.tip || '').replace(/\\n/g, '<br>').replace(/\n/g, '<br>');
+  tip.style.display = 'block';
+  positionTip(e, tip);
+}
+function positionTip(e, tip) {
+  var x = e.clientX + 12, y = e.clientY - 10;
+  var w = tip.offsetWidth || 300;
+  if (x + w > window.innerWidth - 8) x = e.clientX - w - 12;
+  if (y < 8) y = 8;
+  tip.style.left = x + 'px';
+  tip.style.top  = y + 'px';
+}
+function hideTip() {
+  var tip = document.getElementById('global-tooltip');
+  if (tip) tip.style.display = 'none';
+}
+document.addEventListener('mousemove', function(e) {
+  var tip = document.getElementById('global-tooltip');
+  if (tip && tip.style.display === 'block') positionTip(e, tip);
+});
+
+function toggleOkSection(btn) {
+  var body = btn.nextElementSibling;
+  var isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : '';
+  var span = btn.querySelector('span');
+  if (span) span.textContent = isOpen ? '▼ 展開' : '▲ 折りたたむ';
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return String(s).replace(/'/g,"\'"); }
+
+// メモ入力行のトグル
+var _openMemoRow = null;
+function toggleMemoRow(idx, personKey, checkId) {
+  // 既に開いている行を閉じる
+  if (_openMemoRow !== null) {
+    var oldRow = document.getElementById('memo-row-' + _openMemoRow);
+    if (oldRow) oldRow.remove();
+    if (_openMemoRow === idx) { _openMemoRow = null; return; }
+  }
+  _openMemoRow = idx;
+
+  var table = document.getElementById('alert-table');
+  if (!table) return;
+  var rows = table.querySelectorAll('tbody tr[data-idx]');
+  var targetRow = null;
+  rows.forEach(function(r){ if (parseInt(r.dataset.idx) === idx) targetRow = r; });
+  if (!targetRow) return;
+
+  var existingMemo = getMemo(personKey, checkId) || '';
+  var cols = targetRow.querySelectorAll('td').length;
+
+  var tr = document.createElement('tr');
+  tr.id = 'memo-row-' + idx;
+  tr.className = 'memo-row';
+  tr.innerHTML = '<td colspan="' + cols + '" style="padding:6px 12px;">'
+    + '<div style="display:flex;gap:6px;align-items:center;">'
+    + '<input id="memo-input-' + idx + '" class="memo-input" type="text" placeholder="対応メモを入力（例：兄弟ではない、故意の割引など）" value="' + escAttr(existingMemo) + '">'
+    + '<button class="btn-sm btn-save" onclick="applyMemo(' + idx + ',&quot;' + escAttr(personKey) + '&quot;,&quot;' + escAttr(checkId) + '&quot;)">保存</button>'
+    + (existingMemo ? '<button class="btn-sm btn-del" onclick="deleteMemoLocal(&quot;' + escAttr(personKey) + '&quot;,&quot;' + escAttr(checkId) + '&quot;);refreshAlertRow(' + idx + ');document.getElementById(\'memo-row-' + idx + '\').remove();_openMemoRow=null;renderMemoList();">削除</button>' : '')
+    + '<button class="btn-sm" style="background:var(--gray-light);color:var(--gray);" onclick="document.getElementById(\'memo-row-' + idx + '\').remove();_openMemoRow=null;">キャンセル</button>'
+    + '</div></td>';
+
+  targetRow.parentNode.insertBefore(tr, targetRow.nextSibling);
+  document.getElementById('memo-input-' + idx).focus();
+}
+
+function applyMemo(idx, personKey, checkId) {
+  var val = (document.getElementById('memo-input-' + idx) || {}).value || '';
+  if (!val.trim()) return;
+  saveMemoLocal(personKey, checkId, val.trim());
+  var row = document.getElementById('memo-row-' + idx);
+  if (row) row.remove();
+  _openMemoRow = null;
+  refreshAlertRow(idx);
+  renderMemoList();
+  toast('メモを保存しました');
+}
+
+function onModeChange(sel, idx, personKey, checkId) {
+  var mode = sel.value;
+  setDisplayMode(personKey, checkId, mode);
+  sel.className = 'mode-select' + (mode !== 'detect' ? ' mode-' + mode : '');
+  // trのクラスを即時更新
+  var table = document.getElementById('alert-table');
+  if (!table) return;
+  var rows = table.querySelectorAll('tbody tr[data-idx]');
+  rows.forEach(function(r) {
+    if (parseInt(r.dataset.idx) !== idx) return;
+    r.classList.remove('mode-gray', 'mode-hide');
+    if (mode !== 'detect') r.classList.add('mode-' + mode);
+  });
+  // サマリー件数を更新
+  renderResults(_lastMonth);
+}
+
+function refreshAlertRow(idx) {
+  var table = document.getElementById('alert-table');
+  if (!table) return;
+  var rows = table.querySelectorAll('tbody tr[data-idx]');
+  rows.forEach(function(r) {
+    if (parseInt(r.dataset.idx) !== idx) return;
+    var btn = r.querySelector('.btn-memo');
+    if (!btn) return;
+    var personKey = r.dataset.personkey;
+    var cid = r.dataset.checkid;
+    var hasMemo = getMemo(personKey, cid);
+    btn.className = 'btn-memo' + (hasMemo ? ' has-memo' : '');
+    btn.textContent = hasMemo ? 'メモあり' : 'メモ';
+  });
+}
+
+var _lastMonth = 0;
+
+// ===================== 初期化 =====================
+window.onload = function() {
+  var saved = localStorage.getItem('seikyu_master');
+  if (saved) { try { _master = JSON.parse(saved); } catch(e) {} }
+  // GAS URL復元
+  var savedUrl = localStorage.getItem(GAS_URL_KEY);
+  if (savedUrl) {
+    var gasEl = document.getElementById('gas-url');
+    if (gasEl) gasEl.value = savedUrl;
+    // 自動でスプレから読み込む
+    fetchFromSpread();
+  }
+  // 会員管理GAS URL復元
+  var savedKanriUrl = localStorage.getItem(KANRI_GAS_URL_KEY);
+  if (savedKanriUrl) {
+    var kanriEl = document.getElementById('kanri-gas-url');
+    if (kanriEl) kanriEl.value = savedKanriUrl;
+    var statusEl = document.getElementById('kanri-sync-status');
+    if (statusEl) statusEl.textContent = '✅ URL保存済み';
+  }
+  // メモ復元
+  var savedMemos = localStorage.getItem('seikyu_memos');
+  if (savedMemos) { try { _memos = JSON.parse(savedMemos); } catch(e) {} }
+  var savedModes = localStorage.getItem('seikyu_display_modes');
+  if (savedModes) { try { _displayModes = JSON.parse(savedModes); } catch(e) {} }
+  renderMaster();
+  renderSpec();
+  renderMemoList();
+  renderSiblingExclList();
+};
+</script>
+</body>
+</html>
