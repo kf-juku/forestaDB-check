@@ -1213,8 +1213,11 @@ async function runCheck() {
       if (prevKeySet[key]) return; // 先月いる＝新入生でない
       var curAmt = getAmount(row);
       var g = getGrade(row);
-      var isCaRow = (g === 0 || String(row['学年番号'] || '').indexOf('ca') >= 0 ||
-                     String(row['グレードコード'] || '').indexOf('ca') >= 0);
+      // CA判定：生徒マスタのattrCaフラグを優先。マスタ未登録の場合は学年番号・グレードコードにca文字列が含まれるかで判定
+      var sB2 = _students ? _students.find(function(st){ return masterMatchKey(st) === key; }) : null;
+      var isCaRow = sB2 ? !!sB2.attrCa
+                        : (g === 0 || String(row['学年番号'] || '').toLowerCase().indexOf('ca') >= 0 ||
+                           String(row['グレードコード'] || '').toLowerCase().indexOf('ca') >= 0);
 
       // CA生の入会金チェック（8,250円）
       var caFee = _master.ca_entry_fee || 8250;
