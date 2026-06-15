@@ -30,7 +30,17 @@ body {
   box-shadow: 0 2px 6px rgba(0,0,0,0.12);
 }
 .app-header h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
-.app-header .sub { font-size: 11px; opacity: 0.65; margin-left: auto; letter-spacing: 0.01em; }
+.app-header .sub { font-size: 11px; opacity: 0.65; letter-spacing: 0.01em; }
+/* 川上さん指示(2026-06-15)：請求書チェック連携スプレッドシートをワンボタンで開く。URLは埋め込まず、設定済みGASに問い合わせて取得（セキュリティ配慮） */
+.app-header .open-sheet {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; font-weight: 600; color: white; text-decoration: none;
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4);
+  padding: 5px 12px; border-radius: 6px; transition: background 0.1s; white-space: nowrap;
+  cursor: pointer; font-family: inherit;
+}
+.app-header .open-sheet:disabled { opacity: 0.6; cursor: default; }
+.app-header .open-sheet:hover { background: rgba(255,255,255,0.28); }
 .tab-bar {
   display: flex; border-bottom: 2px solid var(--border);
   background: white; padding: 0 16px;
@@ -291,7 +301,8 @@ body {
 
 <div class="app-header">
   <h1>請求書チェックツール</h1>
-  <span class="sub">フォレスタDB 請求ミス検知システム v0.11</span>
+  <button class="open-sheet" type="button" onclick="openLinkedSheet()"><span>📊</span>スプレッドシートを開く</button>
+  <span class="sub">フォレスタDB 請求ミス検知システム v0.24</span>
 </div>
 
 <div class="tab-bar">
@@ -2078,6 +2089,27 @@ function switchTab(tabId) {
 }
 
 // ===================== トースト =====================
+// 川上さん指示(2026-06-15)：連携スプレッドシートをワンボタンで開く。
+// URLはHTMLに埋め込まず、設定済み請求書チェックGAS(action=getSheetUrl)から実行時に取得する。
+function openLinkedSheet() {
+  var url = localStorage.getItem(GAS_URL_KEY) || '';
+  if (!url) { toast('⚠️ 請求書チェックGASのURLが未設定です。チェック実行タブで設定してください'); return; }
+  var btn = document.querySelector('.app-header .open-sheet');
+  if (btn) { btn.disabled = true; }
+  toast('スプレッドシートのURLを取得中…');
+  fetch(url + '?action=getSheetUrl')
+    .then(function(r){ return r.json(); })
+    .then(function(res){
+      if (res && res.ok && res.url) {
+        window.open(res.url, '_blank', 'noopener');
+      } else {
+        toast('❌ URLの取得に失敗しました：' + ((res && res.error) || '不明なエラー。GASを最新版に再デプロイしてください'));
+      }
+    })
+    .catch(function(e){ toast('❌ 通信エラー：' + e.message); })
+    .finally(function(){ if (btn) { btn.disabled = false; } });
+}
+
 function toast(msg, dur) {
   var el = document.getElementById('toast');
   el.textContent = msg; el.classList.add('show');
