@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>フォレスタDB 請求書チェックツール</title>
 <style>
 :root {
@@ -302,7 +303,7 @@ body {
 <div class="app-header">
   <h1>請求書チェックツール</h1>
   <button class="open-sheet" type="button" onclick="openLinkedSheet()"><span>📊</span>スプレッドシートを開く</button>
-  <span class="sub">フォレスタDB 請求ミス検知システム v0.24</span>
+  <span class="sub">フォレスタDB 請求ミス検知システム v0.30</span>
 </div>
 
 <div class="tab-bar">
@@ -843,25 +844,41 @@ function expectedTotalForMonth(s, g, month, isNew, siblingDiscount) {
   }, month).total;
 }
 
-// その行の生徒が「兄弟割引の対象（下の子）」か判定する。
-// 条件：同じ姓で年上（学年が上）の生徒が請求書(rows)にいて、かつ兄弟除外に登録されていない。
-// 兄弟が3人以上でも、年上が1人でもいれば下の子は全員対象（末っ子以外みんな割引）。
-function isDiscountedYoungerSibling(row, rows) {
-  if (!rows || !rows.length) return false;
-  var myFull = normalizeName(getName(row));
-  var myGrade = getGrade(row);
-  if (!myFull || !myGrade) return false;
+// 請求書(rows)の各行が「兄弟割引の対象（下の子）」かを一度だけ判定し、行→真偽の Map を返す。
+// 条件：同じ姓で年上（学年が上）の生徒が請求書にいて、かつ兄弟除外に登録されていない。
+// 3人以上でも年上が1人でもいれば下の子は全員対象。
+// 各行の正規化フルネーム・姓・学年を先に1回だけ計算し、比較は文字列のみで行う（生徒数の2乗×毎回の再計算を避ける）。
+function buildYoungerSiblingMap(rows) {
+  var map = new Map();
+  if (!rows || !rows.length) return map;
+  var info = [];
   for (var i = 0; i < rows.length; i++) {
-    var r = rows[i];
-    if (r === row) continue;
-    var sei = getSei(r);
-    if (!sei) continue;
-    if (myFull.indexOf(normalizeName(sei)) !== 0) continue; // 相手の姓で自分のフルネームが始まる＝同姓
-    if (!(getGrade(r) > myGrade)) continue;                 // 相手が年上のときだけ（自分が下の子）
-    if (isSiblingExcluded(myFull, getName(r).trim())) continue; // 兄弟除外済みは兄弟とみなさない
-    return true;
+    info.push({
+      row:   rows[i],
+      full:  normalizeName(getName(rows[i])),
+      sei:   normalizeName(getSei(rows[i])),
+      name:  getName(rows[i]).trim(),
+      grade: getGrade(rows[i])
+    });
   }
-  return false;
+  for (var a = 0; a < info.length; a++) {
+    var me = info[a];
+    var found = false;
+    if (me.full && me.grade) {
+      for (var b = 0; b < info.length; b++) {
+        if (a === b) continue;
+        var other = info[b];
+        if (!other.sei) continue;
+        if (me.full.indexOf(other.sei) !== 0) continue;      // 相手の姓で自分のフルネームが始まる＝同姓
+        if (!(other.grade > me.grade)) continue;             // 相手が年上（自分が下の子）
+        if (isSiblingExcluded(me.full, other.name)) continue; // 兄弟除外済みは除く
+        found = true;
+        break;
+      }
+    }
+    map.set(me.row, found);
+  }
+  return map;
 }
 
 // 差額から金額マスタの費目を照合し「この費用が入って/抜けていませんか？」の推測文を返す。該当なしは ''。
@@ -940,6 +957,9 @@ async function runCheck() {
   _okStudents = [];
   var cur = _csv.current ? _csv.current.rows : [];
   var prev = _csv.prev ? _csv.prev.rows : [];
+  // 兄弟割引（下の子）判定を今月・先月それぞれ一度だけ計算してキャッシュ（毎回計算すると重いため）
+  var _curYoungerMap  = buildYoungerSiblingMap(cur);
+  var _prevYoungerMap = buildYoungerSiblingMap(prev);
 
   // ===================== CSV入力バリデーション（モーダル警告＋並行検知） =====================
   var _csvWarnLines = [];
@@ -1081,7 +1101,7 @@ async function runCheck() {
       jukenJukou: jukenJukou,
       caNewThisMonth: caNew,
       jukuNewThisMonth: jukuNew,
-      siblingDiscount: isDiscountedYoungerSibling(row, cur)
+      siblingDiscount: !!_curYoungerMap.get(row)
     }, month);
 
     var actual = getAmount(row);
@@ -1305,8 +1325,8 @@ async function runCheck() {
 
       // あるべき額の変化（＝説明できる変化額）を求める。学年アップも先月側の学年で計算して吸収。
       var s = masterMap[key];
-      var expCur  = expectedTotalForMonth(s, getGrade(row),     getMonth(row),     false, isDiscountedYoungerSibling(row, cur));
-      var expPrev = expectedTotalForMonth(s, getGrade(prevRow), getMonth(prevRow), false, isDiscountedYoungerSibling(prevRow, prev));
+      var expCur  = expectedTotalForMonth(s, getGrade(row),     getMonth(row),     false, _curYoungerMap.get(row));
+      var expPrev = expectedTotalForMonth(s, getGrade(prevRow), getMonth(prevRow), false, _prevYoungerMap.get(prevRow));
       var explainedDiff = (expCur != null && expPrev != null) ? (expCur - expPrev) : null;
 
       // 変化が全額あるべき額の変動で説明できる → 警告しない（緑側で「説明可能」と表示）
@@ -1480,7 +1500,7 @@ async function runCheck() {
         var exp = calcExpected({
           grade: g, attrJuku: !!s.attrJuku, attrCa: !!s.attrCa,
           jukenJukou: jukenJukou, caNewThisMonth: caNew, jukuNewThisMonth: jukuNew,
-          siblingDiscount: isDiscountedYoungerSibling(row, cur)
+          siblingDiscount: !!_curYoungerMap.get(row)
         }, month);
         aDetail = {
           expected: exp.total,
@@ -1494,7 +1514,7 @@ async function runCheck() {
         var bPrevAmt = getAmount(prevRow);
         bDetail = { prevAmount: bPrevAmt, curAmount: actual, changed: (bPrevAmt !== actual) };
         if (bDetail.changed && aDetail) {
-          var bExpPrev = expectedTotalForMonth(s, getGrade(prevRow), getMonth(prevRow), false, isDiscountedYoungerSibling(prevRow, prev));
+          var bExpPrev = expectedTotalForMonth(s, getGrade(prevRow), getMonth(prevRow), false, _prevYoungerMap.get(prevRow));
           if (bExpPrev != null) bDetail.explainedDiff = aDetail.expected - bExpPrev;
         }
       }
