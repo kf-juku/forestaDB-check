@@ -303,7 +303,7 @@ body {
 <div class="app-header">
   <h1>請求書チェックツール</h1>
   <button class="open-sheet" type="button" onclick="openLinkedSheet()"><span>📊</span>スプレッドシートを開く</button>
-  <span class="sub">フォレスタDB 請求ミス検知システム v0.30</span>
+  <span class="sub">フォレスタDB 請求ミス検知システム v0.31</span>
 </div>
 
 <div class="tab-bar">
@@ -1462,7 +1462,7 @@ async function runCheck() {
 
         var combined = upperExp.total + lowerExp.total;
         if (upperActual === combined) {
-          var discNote = (SPECIAL.indexOf(month) >= 0) ? '（下の子は兄弟割引 −5,000込み）' : '';
+          var discNote = (SPECIAL_MONTHS.indexOf(month) >= 0) ? '（下の子は兄弟割引 −5,000込み）' : '';
           addAlert('confirm', 'D3', upperRow,
             '請求額（' + upperActual.toLocaleString() + '円）= 自分のあるべき額（' + upperExp.total.toLocaleString() + '円）+ ' +
             lowerName + 'のあるべき額' + discNote + '（' + lowerExp.total.toLocaleString() + '円）と一致。兄弟まとめ請求の可能性あり',
