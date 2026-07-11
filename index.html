@@ -479,8 +479,7 @@ var DEFAULT_MASTER = {
   special: [
     { label: '教室管理費 小学生',       gradeRange: [11,12,13,14,15,16], months: [4,8,12], amount: 9900 },
     { label: '教室管理費 中学生',       gradeRange: [21,22,23],          months: [4,8,12], amount: 12900 },
-    { label: '教室管理費 CA小学生',     gradeRange: 'ca_small',          months: [4,8,12], amount: 9900 },
-    { label: '教室管理費 CA中学生',     gradeRange: 'ca_middle',         months: [4,8,12], amount: 12900 },
+    { label: '教室管理費 CA',           gradeRange: 'ca',                months: [4,8,12], amount: 9900 },
     { label: '年間教材費 小学生',       gradeRange: [11,12,13,14,15,16], months: [4],      amount: 10000 },
     { label: '年間教材費 中学生（中1〜3）', gradeRange: [21,22,23],        months: [4],      amount: 29800 },
     { label: '受験特訓教材費（中3・4月追加）', gradeRange: [23],          months: [4],      amount: 19800 },
@@ -737,7 +736,7 @@ function buildMasterRows(rawRows) {
     var monthsRaw = (r['対象月'] != null ? r['対象月'] : 'all').toString().trim();
     var months = (monthsRaw === 'all') ? 'all' : monthsRaw.split(',').map(function(m){ return parseInt(m.trim(), 10); }).filter(function(n){ return !isNaN(n); });
     var amount = parseInt(r['金額'], 10) || 0;
-    out.push({ key: key, grades: grades, months: months, amount: amount });
+    out.push({ key: key, grades: grades, months: months, amount: amount, label: (r['種別'] != null ? r['種別'] : '').toString().trim() });
   });
   MASTER_ROWS = out;
   return out;
@@ -808,14 +807,103 @@ function calcExpected(student, month) {
     }
   }
 
-  // 教室管理費（請求月4・8・12月）。塾CA両方でも1回だけ
+  // 教室管理費（請求月4・8・12月）。塾×学年とCAで該当する管理費の「高いほう」を1回だけ。重複なし
+  // 川上さん指示(2026-07-11)：塾は学年別(小9,900/中12,900)、CAは学年問わず固定9,900。
+  //   両方に該当する場合は高いほう。高校生は塾側に管理費が無いので、CA兼塾でもCA9,900が残る。
   if (SPECIAL.indexOf(month) >= 0 && (student.attrJuku || student.attrCa)) {
-    var kh = lookupMaster('kanrihi', g, month);
-    if (kh != null) items.push({ name: '教室管理費', amount: kh });
+    var khCands = [];
+    if (student.attrJuku) { var khJuku = lookupMaster('kanrihi', g, month); if (khJuku != null) khCands.push(khJuku); }
+    if (student.attrCa)   { var khCa = lookupMaster('kanrihi', 'ca', month); if (khCa != null) khCands.push(khCa); }
+    if (khCands.length) items.push({ name: '教室管理費', amount: Math.max.apply(null, khCands) });
+  }
+
+  // 兄弟割引（学齢が下の子の教室管理費 −5,000円）。管理費月のみ。金額はマスタ(sibling_disc)から引く。
+  // siblingDiscount の判定（同姓・年上あり・兄弟除外なし）は呼び出し側が行う。
+  if (student.siblingDiscount && SPECIAL.indexOf(month) >= 0) {
+    var sd = lookupMaster('sibling_disc', g, month);
+    if (sd != null) items.push({ name: '兄弟割引', amount: -sd });
   }
 
   var total = items.reduce(function(s, it) { return s + it.amount; }, 0);
   return { items: items, total: total };
+}
+
+// 指定した月のあるべき額合計を返す（先月比較B1・緑の説明用）。突合不可/所属なしは null。
+// isNew=true のときだけ新入生初月費用（教材費前倒し・CA入会金）を含める。継続生は false。
+function expectedTotalForMonth(s, g, month, isNew, siblingDiscount) {
+  if (!s || (!s.attrJuku && !s.attrCa)) return null;
+  var jukenJukou = (g === 23) && Array.isArray(s.komas) &&
+    s.komas.some(function(k){ return k && k.satType === 'juken'; });
+  return calcExpected({
+    grade: g, attrJuku: !!s.attrJuku, attrCa: !!s.attrCa,
+    jukenJukou: jukenJukou,
+    caNewThisMonth: !!isNew && !!s.attrCa,
+    jukuNewThisMonth: !!isNew && !!s.attrJuku,
+    siblingDiscount: !!siblingDiscount
+  }, month).total;
+}
+
+// その行の生徒が「兄弟割引の対象（下の子）」か判定する。
+// 条件：同じ姓で年上（学年が上）の生徒が請求書(rows)にいて、かつ兄弟除外に登録されていない。
+// 兄弟が3人以上でも、年上が1人でもいれば下の子は全員対象（末っ子以外みんな割引）。
+function isDiscountedYoungerSibling(row, rows) {
+  if (!rows || !rows.length) return false;
+  var myFull = normalizeName(getName(row));
+  var myGrade = getGrade(row);
+  if (!myFull || !myGrade) return false;
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i];
+    if (r === row) continue;
+    var sei = getSei(r);
+    if (!sei) continue;
+    if (myFull.indexOf(normalizeName(sei)) !== 0) continue; // 相手の姓で自分のフルネームが始まる＝同姓
+    if (!(getGrade(r) > myGrade)) continue;                 // 相手が年上のときだけ（自分が下の子）
+    if (isSiblingExcluded(myFull, getName(r).trim())) continue; // 兄弟除外済みは兄弟とみなさない
+    return true;
+  }
+  return false;
+}
+
+// 差額から金額マスタの費目を照合し「この費用が入って/抜けていませんか？」の推測文を返す。該当なしは ''。
+// g はその生徒の学年（数値）。学年に該当する費目を優先照合し、CA費目('ca')・共通('-')は常に候補。
+function feeGradeOk(r, g) {
+  if (r.grades === 'ca' || r.grades === '-') return true;
+  return (Object.prototype.toString.call(r.grades) === '[object Array]') && r.grades.indexOf(g) >= 0;
+}
+function guessFeeFromDiff(diff, g) {
+  if (!diff) return '';
+  var target = Math.abs(diff);
+  var fees = [];
+  MASTER_ROWS.forEach(function(r){
+    if (!r.amount || r.amount <= 0) return;
+    if (!feeGradeOk(r, g)) return;
+    fees.push({ label: (r.label || r.key), amount: r.amount });
+  });
+  // まず単品一致
+  var labels = [];
+  fees.forEach(function(f){
+    if (f.amount === target) {
+      var t = f.label + '（' + f.amount.toLocaleString() + '円）';
+      if (labels.indexOf(t) < 0) labels.push(t);
+    }
+  });
+  // 単品でなければ2品の合計一致
+  if (!labels.length) {
+    for (var i = 0; i < fees.length; i++) {
+      for (var j = i + 1; j < fees.length; j++) {
+        if (fees[i].amount + fees[j].amount === target) {
+          var t2 = fees[i].label + '＋' + fees[j].label + '（合計' + target.toLocaleString() + '円）';
+          if (labels.indexOf(t2) < 0) labels.push(t2);
+        }
+      }
+    }
+  }
+  if (!labels.length) return '';
+  labels = labels.slice(0, 4);
+  if (diff > 0) {
+    return '　推測：差額 +' + target.toLocaleString() + '円は「' + labels.join('」「') + '」と同じ額です。この費用が二重・誤って含まれていないか確認してください。';
+  }
+  return '　推測：差額 −' + target.toLocaleString() + '円は「' + labels.join('」「') + '」と同じ額です。この費用の付け忘れがないか確認してください。';
 }
 
 // ===================== チェックロジック =====================
@@ -992,7 +1080,8 @@ async function runCheck() {
       attrCa: !!s.attrCa,
       jukenJukou: jukenJukou,
       caNewThisMonth: caNew,
-      jukuNewThisMonth: jukuNew
+      jukuNewThisMonth: jukuNew,
+      siblingDiscount: isDiscountedYoungerSibling(row, cur)
     }, month);
 
     var actual = getAmount(row);
@@ -1005,7 +1094,8 @@ async function runCheck() {
       addAlert('error', 'A1', row,
         'あるべき額と不一致【内訳: ' + breakdown + ' = ' + expected.total.toLocaleString() +
         '円】フォレスタ請求: ' + actual.toLocaleString() + '円 ／ 差額: ' +
-        (diff > 0 ? '+' : '') + diff.toLocaleString() + '円',
+        (diff > 0 ? '+' : '') + diff.toLocaleString() + '円' +
+        guessFeeFromDiff(diff, g),
         diff);
     }
   });
@@ -1200,7 +1290,9 @@ async function runCheck() {
     }
   });
 
-  // ========== B1: 先月比で請求額が変わった ==========
+  // ========== B1: 先月比で請求額が変わった（あるべき額で説明できない差だけ警告） ==========
+  // 仕様（機能仕様書 90/136/306行）：先月からの変化のうち、あるべき額の変動（管理費・教材費・模試・学年等）で
+  //   説明できる分は緑（問題なし）で「説明可能」と見せる。説明できない残差だけを警告にする。
   if (isCheckEnabled('B1') && !_noPrevMode) {
     cur.forEach(function(row) {
       var key = csvMatchKey(row);
@@ -1208,12 +1300,31 @@ async function runCheck() {
       if (!prevRow) return; // 先月いない（新入生）はB2で扱う
       var curAmt  = getAmount(row);
       var prevAmt = getAmount(prevRow);
-      if (curAmt !== prevAmt) {
-        var diff = curAmt - prevAmt;
-        addAlert('warning', 'B1', row,
-          '先月（' + prevAmt.toLocaleString() + '円）→ 今月（' + curAmt.toLocaleString() + '円）に変化（差額 ' + (diff > 0 ? '+' : '') + diff.toLocaleString() + '円）。原因を確認してください',
-          diff);
+      if (curAmt === prevAmt) return; // 変化なし
+      var actualDiff = curAmt - prevAmt;
+
+      // あるべき額の変化（＝説明できる変化額）を求める。学年アップも先月側の学年で計算して吸収。
+      var s = masterMap[key];
+      var expCur  = expectedTotalForMonth(s, getGrade(row),     getMonth(row),     false, isDiscountedYoungerSibling(row, cur));
+      var expPrev = expectedTotalForMonth(s, getGrade(prevRow), getMonth(prevRow), false, isDiscountedYoungerSibling(prevRow, prev));
+      var explainedDiff = (expCur != null && expPrev != null) ? (expCur - expPrev) : null;
+
+      // 変化が全額あるべき額の変動で説明できる → 警告しない（緑側で「説明可能」と表示）
+      if (explainedDiff != null && actualDiff === explainedDiff) return;
+
+      // 説明できない残差だけを警告
+      var residual = (explainedDiff != null) ? (actualDiff - explainedDiff) : actualDiff;
+      var msg = '先月（' + prevAmt.toLocaleString() + '円）→ 今月（' + curAmt.toLocaleString()
+        + '円）に変化（差額 ' + (actualDiff > 0 ? '+' : '') + actualDiff.toLocaleString() + '円）。';
+      if (explainedDiff != null && explainedDiff !== 0) {
+        msg += 'うち ' + (explainedDiff > 0 ? '+' : '') + explainedDiff.toLocaleString()
+          + '円はあるべき額の変動（管理費など季節費用・学年変更）で説明できます。残り '
+          + (residual > 0 ? '+' : '') + residual.toLocaleString() + '円が要確認です。';
+      } else {
+        msg += '原因を確認してください。';
       }
+      msg += guessFeeFromDiff(residual, getGrade(row));
+      addAlert('warning', 'B1', row, msg, residual);
     });
   }
 
@@ -1291,13 +1402,16 @@ async function runCheck() {
       var lowerG = masterGradeNum(lowerStudent);
       var lowerJuken = (lowerG === 23) && Array.isArray(lowerStudent.komas) &&
         lowerStudent.komas.some(function(k){ return k && k.satType === 'juken'; });
+      // 下の子は上の子の弟妹＝兄弟割引の対象。まとめ請求の合算にも −5,000 が乗るので割引込みで計算する。
+      // （C5で候補を作る時点で兄弟除外ペアは除外済み。管理費月以外は割引0なので影響なし）
       var lowerExp = calcExpected({
         grade: lowerG,
         attrJuku: !!lowerStudent.attrJuku,
         attrCa: !!lowerStudent.attrCa,
         jukenJukou: lowerJuken,
         caNewThisMonth: false,
-        jukuNewThisMonth: false
+        jukuNewThisMonth: false,
+        siblingDiscount: true
       }, month);
 
       // 上の子（請求書にいる）の各候補に対してチェック
@@ -1328,9 +1442,10 @@ async function runCheck() {
 
         var combined = upperExp.total + lowerExp.total;
         if (upperActual === combined) {
+          var discNote = (SPECIAL.indexOf(month) >= 0) ? '（下の子は兄弟割引 −5,000込み）' : '';
           addAlert('confirm', 'D3', upperRow,
             '請求額（' + upperActual.toLocaleString() + '円）= 自分のあるべき額（' + upperExp.total.toLocaleString() + '円）+ ' +
-            lowerName + 'のあるべき額（' + lowerExp.total.toLocaleString() + '円）と一致。兄弟まとめ請求の可能性あり',
+            lowerName + 'のあるべき額' + discNote + '（' + lowerExp.total.toLocaleString() + '円）と一致。兄弟まとめ請求の可能性あり',
             null);
         }
       });
@@ -1364,18 +1479,24 @@ async function runCheck() {
           s.komas.some(function(k){ return k && k.satType === 'juken'; });
         var exp = calcExpected({
           grade: g, attrJuku: !!s.attrJuku, attrCa: !!s.attrCa,
-          jukenJukou: jukenJukou, caNewThisMonth: caNew, jukuNewThisMonth: jukuNew
+          jukenJukou: jukenJukou, caNewThisMonth: caNew, jukuNewThisMonth: jukuNew,
+          siblingDiscount: isDiscountedYoungerSibling(row, cur)
         }, month);
         aDetail = {
           expected: exp.total,
           breakdown: exp.items.map(function(it){ return it.name + ': ' + it.amount.toLocaleString() + '円'; }).join(' + ')
         };
       }
-      // B系根拠：先月金額
+      // B系根拠：先月金額と、変化があった場合の説明（あるべき額の変動で説明できるか）
       var bDetail = null;
       var prevRow = prevKeySet[key];
       if (prevRow) {
-        bDetail = { prevAmount: getAmount(prevRow) };
+        var bPrevAmt = getAmount(prevRow);
+        bDetail = { prevAmount: bPrevAmt, curAmount: actual, changed: (bPrevAmt !== actual) };
+        if (bDetail.changed && aDetail) {
+          var bExpPrev = expectedTotalForMonth(s, getGrade(prevRow), getMonth(prevRow), false, isDiscountedYoungerSibling(prevRow, prev));
+          if (bExpPrev != null) bDetail.explainedDiff = aDetail.expected - bExpPrev;
+        }
       }
       _okStudents.push({
         name:      getName(row),
@@ -1768,7 +1889,7 @@ function renderResults(curMonth) {
         + '<td style="text-align:right;">' + s.amount.toLocaleString() + '円</td>'
         + (function(){
             var aLine = s.aDetail ? 'A: ' + s.aDetail.breakdown + ' = ' + s.aDetail.expected.toLocaleString() + '円 ✅' : 'A: マスタ未突合';
-            var bLine = s.bDetail ? 'B: 先月' + s.bDetail.prevAmount.toLocaleString() + '円 → 変化なし ✅' : 'B: 先月データなし（新入生候補）';
+            var bLine = okBLine(s.bDetail);
             var tipText = escAttr(aLine + '\n' + bLine);
             return '<td style="font-size:11px;color:#166534;cursor:default;" data-tip="' + tipText + '" onmouseenter="showTip(event,this)" onmouseleave="hideTip()">ℹ ホバーで確認</td>';
           })()
@@ -2468,6 +2589,21 @@ function renderSiblingExclList() {
   el.innerHTML = html;
 }
 
+// 緑（問題なし）のB行テキスト。先月から変化があった場合は、あるべき額で説明できる旨を見せる。
+function okBLine(bDetail) {
+  if (!bDetail) return 'B: 先月データなし（新入生候補）';
+  if (!bDetail.changed) return 'B: 先月' + bDetail.prevAmount.toLocaleString() + '円 → 変化なし ✅';
+  var d = bDetail.curAmount - bDetail.prevAmount;
+  var line = 'B: 先月' + bDetail.prevAmount.toLocaleString() + '円 → 今月' + bDetail.curAmount.toLocaleString()
+    + '円（' + (d > 0 ? '+' : '') + d.toLocaleString() + '円）';
+  if (bDetail.explainedDiff != null && bDetail.explainedDiff === d) {
+    line += '：あるべき額の変動（管理費など季節費用・学年変更）で説明可能 ✅';
+  } else {
+    line += ' ✅';
+  }
+  return line;
+}
+
 function buildOkDetailHtml(s) {
   var lines = [];
   if (s.aDetail) {
@@ -2475,11 +2611,7 @@ function buildOkDetailHtml(s) {
   } else {
     lines.push('A: マスタ未突合');
   }
-  if (s.bDetail) {
-    lines.push('B: 先月' + s.bDetail.prevAmount.toLocaleString() + '円 → 変化なし ✅');
-  } else {
-    lines.push('B: 先月データなし（新入生候補）');
-  }
+  lines.push(okBLine(s.bDetail));
   return lines.join('<br>');
 }
 
