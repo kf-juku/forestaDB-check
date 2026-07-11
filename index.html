@@ -212,9 +212,15 @@ body {
   background:#fef3c7; border:1px solid #f59e0b; border-radius:12px;
   padding:2px 8px; font-size:11px; color:#92400e;
 }
+.chip-confirm-btn {
+  background:#22c55e; color:white; border:none; border-radius:8px;
+  padding:1px 6px; font-size:10px; cursor:pointer; white-space:nowrap; margin-left:4px;
+}
+.chip-confirm-btn:hover { background:#16a34a; }
+.chip-confirm-btn:disabled { background:#9ca3af; cursor:not-allowed; }
 .chip-excl-btn {
   background:#ef4444; color:white; border:none; border-radius:8px;
-  padding:1px 6px; font-size:10px; cursor:pointer; white-space:nowrap;
+  padding:1px 6px; font-size:10px; cursor:pointer; white-space:nowrap; margin-left:4px;
 }
 .chip-excl-btn:hover { background:#dc2626; }
 .chip-excl-btn:disabled { background:#9ca3af; cursor:not-allowed; }
@@ -303,7 +309,7 @@ body {
 <div class="app-header">
   <h1>請求書チェックツール</h1>
   <button class="open-sheet" type="button" onclick="openLinkedSheet()"><span>📊</span>スプレッドシートを開く</button>
-  <span class="sub">フォレスタDB 請求ミス検知システム v0.31</span>
+  <span class="sub">フォレスタDB 請求ミス検知システム v0.34</span>
 </div>
 
 <div class="tab-bar">
@@ -868,10 +874,8 @@ function buildYoungerSiblingMap(rows) {
       for (var b = 0; b < info.length; b++) {
         if (a === b) continue;
         var other = info[b];
-        if (!other.sei) continue;
-        if (me.full.indexOf(other.sei) !== 0) continue;      // 相手の姓で自分のフルネームが始まる＝同姓
-        if (!(other.grade > me.grade)) continue;             // 相手が年上（自分が下の子）
-        if (isSiblingExcluded(me.full, other.name)) continue; // 兄弟除外済みは除く
+        if (!(other.grade > me.grade)) continue;                 // 相手が年上（自分が下の子）
+        if (!isSiblingConfirmed(me.full, other.name)) continue;  // 確定した兄弟だけ割引対象（オプトイン。未確定は割引を当てない）
         found = true;
         break;
       }
@@ -1260,11 +1264,15 @@ async function runCheck() {
   for (var i = 0; i < cur.length; i++) {
     for (var j = i + 1; j < cur.length; j++) {
       if (getSei(cur[i]) === getSei(cur[j]) && getGrade(cur[i]) !== getGrade(cur[j])) {
+        var d2a = getName(cur[i]).trim(), d2b = getName(cur[j]).trim();
+        if (isSiblingConfirmed(d2a, d2b) || isSiblingExcluded(d2a, d2b)) continue; // 判定済み（兄弟確定/でない）は候補に出さない
         siblingPairs.push({ a: cur[i], b: cur[j] });
-        // C2アラートは1回だけ（ペアごとに情報として出す）
         addAlert('confirm', 'D2', cur[i],
           '兄弟候補：' + getName(cur[i]) + '（' + gradeLabel(getGrade(cur[i])) + '）と'
-          + getName(cur[j]) + '（' + gradeLabel(getGrade(cur[j])) + '）', null);
+          + getName(cur[j]) + '（' + gradeLabel(getGrade(cur[j])) + '）。「✓ 兄弟」か「✕ 兄弟でない」で確定してください', null);
+        // 確定チップ用（個別請求の同姓ペア。キーは順序不問なので割引側で年下判定される）
+        _alerts[_alerts.length - 1].lowerName = normalizeName(d2a);
+        _alerts[_alerts.length - 1].siblingCandidateNames = [d2b];
       }
     }
   }
@@ -1442,6 +1450,7 @@ async function runCheck() {
           if (csvMatchKey(row) === upperPersonKey) upperRow = row;
         });
         if (!upperRow) return;
+        if (!isSiblingConfirmed(lowerName, getName(upperRow).trim())) return; // 確定した兄弟のみ まとめ請求として扱う（オプトイン）
 
         var upperActual = getAmount(upperRow);
         var upperKey = csvMatchKey(upperRow);
@@ -1868,14 +1877,19 @@ function renderResults(curMonth) {
         + '<td style="text-align:right;' + (a.diff !== null && a.diff < 0 ? 'color:#dc2626;' : '') + '">'
           + (a.diff !== null ? (a.diff > 0 ? '+' : '') + a.diff.toLocaleString() : '—') + '</td>'
         + '<td style="font-size:12px;">' + a.msg
-          + (a.checkId === 'C5' && a.siblingCandidateNames && a.siblingCandidateNames.length > 0
+          + ((a.checkId === 'C5' || a.checkId === 'D2') && a.siblingCandidateNames && a.siblingCandidateNames.length > 0
             ? '<div class="sibling-chips" style="margin-top:5px;">' +
               a.siblingCandidateNames.map(function(cn, ci) {
                 var lowerN = a.lowerName || '';
                 var cnEsc = escAttr(cn);
                 var lowerEsc = escAttr(lowerN);
                 var label = escHtml(cn);
-                return '<span class="sibling-chip">' + label + '<button class="chip-excl-btn" title="兄弟でない" onclick="excludeSibling(this,&quot;' + lowerEsc + '&quot;,&quot;' + cnEsc + '&quot;)">✕ 兄弟でない</button></span>';
+                if (isSiblingConfirmed(lowerN, cn)) {
+                  return '<span class="sibling-chip">' + label + '<span style="color:#166534;font-size:11px;margin-left:4px;font-weight:700;">✓ 兄弟確定</span></span>';
+                }
+                return '<span class="sibling-chip">' + label
+                  + '<button class="chip-confirm-btn" title="この2人は兄弟です" onclick="confirmSibling(this,&quot;' + lowerEsc + '&quot;,&quot;' + cnEsc + '&quot;)">✓ 兄弟</button>'
+                  + '<button class="chip-excl-btn" title="兄弟でない" onclick="excludeSibling(this,&quot;' + lowerEsc + '&quot;,&quot;' + cnEsc + '&quot;)">✕ 兄弟でない</button></span>';
               }).join('') + '</div>'
             : '')
           + (hasMemo ? '<br><span style="color:var(--blue-dark);font-size:11px;">' + escHtml(hasMemo) + '</span>' : '') + '</td>'
@@ -2390,16 +2404,21 @@ function applySpreadData(data) {
     renderMaster();
   }
 
-  // 兄弟除外ペア適用
+  // 兄弟除外ペア適用（GASを正データとし、空でも作り直して他端末の解除を反映）
+  _siblingExcl = new Set();
   if (data.siblingExclusions && data.siblingExclusions.length > 0) {
-    _siblingExcl = new Set();
     data.siblingExclusions.forEach(function(ex) {
-      if (ex.nameA && ex.nameB) {
-        _siblingExcl.add(siblingExclKey(ex.nameA, ex.nameB));
-      }
+      if (ex.nameA && ex.nameB) _siblingExcl.add(siblingExclKey(ex.nameA, ex.nameB));
     });
-    renderSiblingExclList();
   }
+  // 兄弟確定ペア適用（同上）
+  _siblingConfirm = new Set();
+  if (data.siblingConfirms && data.siblingConfirms.length > 0) {
+    data.siblingConfirms.forEach(function(ex) {
+      if (ex.nameA && ex.nameB) _siblingConfirm.add(siblingExclKey(ex.nameA, ex.nameB));
+    });
+  }
+  renderSiblingExclList();
 
   // チェック項目適用（有効/無効）
   if (data.checks && data.checks.length > 0) {
@@ -2412,16 +2431,28 @@ function applySpreadData(data) {
     });
   }
 
-  // 対応メモ適用
+  // 対応メモ＋表示設定（プルダウン）を適用。GASが正データ。
+  // ★表示設定は「対応メモ」シートのE列に入り getMemos が m.displayMode で返す。
+  //   以前はHTMLが m.memo だけ拾い displayMode を捨てていたため、他端末のプルダウン設定が反映されなかった（2026-07-11修正）。
   if (data.memos) {
     _memos = {};
+    _displayModes = {};
     data.memos.forEach(function(m) {
       // 新形式: fullName|grade|checkId。旧形式(m.sei)も後方互換で受ける。
       var pKey = (m.fullName != null) ? (normalizeName(m.fullName) + '|' + (m.grade || '')) : (m.sei || '');
       var key = pKey + '|' + m.checkId;
-      _memos[key] = m.memo;
+      if (m.memo) _memos[key] = m.memo;
+      if (m.displayMode && m.displayMode !== 'detect') _displayModes[key] = m.displayMode;
     });
+    // ローカルキャッシュもGASの内容に合わせる（古い値が残らないように）
+    try {
+      localStorage.setItem('seikyu_memos', JSON.stringify(_memos));
+      localStorage.setItem('seikyu_display_modes', JSON.stringify(_displayModes));
+    } catch(e) {}
   }
+
+  // 既にチェック結果を表示中なら、最新の表示設定・メモで描画し直す
+  if (_lastMonth > 0) { try { renderResults(_lastMonth); } catch(e) {} }
 }
 
 // チェック項目オーバーライド（スプレの「有効」列で制御）
@@ -2445,6 +2476,7 @@ function isSiblingExcluded(nameA, nameB) {
 function addSiblingExclusion(nameA, nameB) {
   var key = siblingExclKey(nameA, nameB);
   _siblingExcl.add(key);
+  _siblingConfirm.delete(key); // 「兄弟でない」と「兄弟確定」は排他
   // GAS保存
   var url = (document.getElementById('gas-url') || {}).value || localStorage.getItem(GAS_URL_KEY) || '';
   if (url) {
@@ -2453,6 +2485,10 @@ function addSiblingExclusion(nameA, nameB) {
       method: 'POST',
       body: JSON.stringify({ action: 'saveSiblingExclusion', nameA: sorted[0], nameB: sorted[1] })
     }).catch(function(e) { console.warn('兄弟除外GAS保存エラー', e); });
+    fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteSiblingConfirm', nameA: sorted[0], nameB: sorted[1] })
+    }).catch(function(){});
   }
   renderSiblingExclList();
 }
@@ -2480,6 +2516,54 @@ function removeSiblingExclusion(nameA, nameB) {
   }
   renderSiblingExclList();
   // 再描画（除外解除で候補が戻るため）
+  if (_lastMonth > 0) renderResults(_lastMonth);
+}
+
+// ===== 兄弟確定（＝兄弟です）。除外と対になる正の登録。氏名ペアで持つので双方向（Aで設定→Bにも反映）。 =====
+var _siblingConfirm = new Set();
+// キー正規化は除外と共通（ソート済みフルネームペア siblingExclKey）
+function isSiblingConfirmed(nameA, nameB) {
+  return _siblingConfirm.has(siblingExclKey(nameA, nameB));
+}
+// 兄弟確定を追加してGAS保存（同時に「兄弟でない」を外す＝排他）
+function addSiblingConfirm(nameA, nameB) {
+  var key = siblingExclKey(nameA, nameB);
+  _siblingConfirm.add(key);
+  _siblingExcl.delete(key);
+  var url = (document.getElementById('gas-url') || {}).value || localStorage.getItem(GAS_URL_KEY) || '';
+  if (url) {
+    var sorted = key.split('|||');
+    fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveSiblingConfirm', nameA: sorted[0], nameB: sorted[1] })
+    }).catch(function(e) { console.warn('兄弟確定GAS保存エラー', e); });
+    fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteSiblingExclusion', nameA: sorted[0], nameB: sorted[1] })
+    }).catch(function(){});
+  }
+  renderSiblingExclList();
+}
+// チップの「兄弟です」ボタンから呼ぶ（スピナー→確定→再チェック）
+function confirmSibling(btn, nameA, nameB) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  addSiblingConfirm(nameA, nameB);
+  runCheck();
+}
+// 兄弟確定を解除してGAS削除
+function removeSiblingConfirm(nameA, nameB) {
+  var key = siblingExclKey(nameA, nameB);
+  _siblingConfirm.delete(key);
+  var url = (document.getElementById('gas-url') || {}).value || localStorage.getItem(GAS_URL_KEY) || '';
+  if (url) {
+    var sorted = key.split('|||');
+    fetch(url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'deleteSiblingConfirm', nameA: sorted[0], nameB: sorted[1] })
+    }).catch(function(e) { console.warn('兄弟確定GAS削除エラー', e); });
+  }
+  renderSiblingExclList();
   if (_lastMonth > 0) renderResults(_lastMonth);
 }
 
@@ -2593,20 +2677,22 @@ function renderMemoList() {
 function renderSiblingExclList() {
   var el = document.getElementById('sibling-excl-list');
   if (!el) return;
-  if (_siblingExcl.size === 0) { el.innerHTML = '（まだ登録がありません）'; return; }
-
-  var html = '<table class="preview-table"><tr><th>氏名A</th><th>氏名B</th><th></th></tr>';
-  _siblingExcl.forEach(function(key) {
-    var parts = key.split('|||');
-    var nameA = parts[0], nameB = parts[1] || '';
-    html += '<tr>'
-      + '<td>' + escHtml(nameA) + '</td>'
-      + '<td>' + escHtml(nameB) + '</td>'
-      + '<td><button class="btn-sm btn-del" onclick="removeSiblingExclusion(&quot;' + escAttr(nameA) + '&quot;,&quot;' + escAttr(nameB) + '&quot;)">解除</button></td>'
-      + '</tr>';
-  });
-  html += '</table>';
-  el.innerHTML = html;
+  function pairTable(set, removeFn) {
+    if (set.size === 0) return '<div style="color:var(--text-muted);font-size:12px;margin:2px 0 8px;">（まだ登録がありません）</div>';
+    var h = '<table class="preview-table"><tr><th>氏名A</th><th>氏名B</th><th></th></tr>';
+    set.forEach(function(key) {
+      var parts = key.split('|||');
+      var nameA = parts[0], nameB = parts[1] || '';
+      h += '<tr><td>' + escHtml(nameA) + '</td><td>' + escHtml(nameB) + '</td>'
+        + '<td><button class="btn-sm btn-del" onclick="' + removeFn + '(&quot;' + escAttr(nameA) + '&quot;,&quot;' + escAttr(nameB) + '&quot;)">解除</button></td></tr>';
+    });
+    return h + '</table>';
+  }
+  el.innerHTML =
+      '<div style="font-weight:700;color:var(--green-dark);margin:2px 0;">✓ 兄弟確定（' + _siblingConfirm.size + '組）</div>'
+    + pairTable(_siblingConfirm, 'removeSiblingConfirm')
+    + '<div style="font-weight:700;color:#dc2626;margin:10px 0 2px;">✕ 兄弟でない（' + _siblingExcl.size + '組）</div>'
+    + pairTable(_siblingExcl, 'removeSiblingExclusion');
 }
 
 // 緑（問題なし）のB行テキスト。先月から変化があった場合は、あるべき額で説明できる旨を見せる。
