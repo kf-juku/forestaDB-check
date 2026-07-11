@@ -281,7 +281,7 @@ body {
 .alert-table tr.level-info td  { border-left: 3px solid var(--blue); }
 .alert-table tr.level-confirm td { border-left: 3px solid #eab308; }
 
-.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
 .filter-btn {
   padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600;
   border: 1.5px solid var(--border); background: white; cursor: pointer; font-family: inherit;
@@ -309,7 +309,7 @@ body {
 <div class="app-header">
   <h1>請求書チェックツール</h1>
   <button class="open-sheet" type="button" onclick="openLinkedSheet()"><span>📊</span>スプレッドシートを開く</button>
-  <span class="sub">フォレスタDB 請求ミス検知システム v0.34</span>
+  <span class="sub">フォレスタDB 請求ミス検知システム v0.35</span>
 </div>
 
 <div class="tab-bar">
@@ -1814,30 +1814,24 @@ function renderResults(curMonth) {
       + '</div>';
   }
 
-  // サマリーバー
-  html += '<div class="summary-bar">';
-  html += '<div class="summary-chip chip-error"><span class="num">' + errorCount + '</span> エラー</div>';
-  html += '<div class="summary-chip chip-warn"><span class="num">' + warningCount + '</span> 警告</div>';
-  html += '<div class="summary-chip chip-confirm"><span class="num">' + confirmCount + '</span> 確認</div>';
-  html += '<div class="summary-chip chip-ok"><span class="num">' + okCount + '</span> 対象件数（当月）</div>';
+  // サマリー＆フィルター（1行に統合）。数字のボタンがそのまま絞り込みになる。各ボタンにホバーで意味を表示。
+  html += '<div class="filter-bar">';
+  if (_alerts.length > 0) {
+    html += '<button class="filter-btn" id="fbtn-all" onclick="filterAlerts(\'all\')" data-tip="検知した全ての行を表示します（静音化した分も含むため、下の3つの合計より多くなることがあります）。" onmouseenter="showTip(event,this)" onmouseleave="hideTip()">すべて（' + _alerts.length + '）</button>';
+    html += '<button class="filter-btn" id="fbtn-error" onclick="filterAlerts(\'error\')" data-tip="エラー：あるべき請求額と合計が不一致／0円／異常額／同じ生徒が同月に重複／学年番号が不正など。正データと機械的に食い違う＝直す必要が高いもの。" onmouseenter="showTip(event,this)" onmouseleave="hideTip()">🔴 エラー（' + errorCount + '）</button>';
+    html += '<button class="filter-btn" id="fbtn-warning" onclick="filterAlerts(\'warning\')" data-tip="警告：先月からの変化のうち、あるべき額の変動（管理費・教材費・模試・学年など）では説明できないもの。変化＝必ずミスとは限らないが要確認。" onmouseenter="showTip(event,this)" onmouseleave="hideTip()">🟡 警告（' + warningCount + '）</button>';
+    html += '<button class="filter-btn" id="fbtn-confirm" onclick="filterAlerts(\'confirm\')" data-tip="確認：機械では正誤を断定できず、人の目で判断するもの。同姓同名・現金払い・入金未確認・兄弟候補など。" onmouseenter="showTip(event,this)" onmouseleave="hideTip()">🟡 確認（' + confirmCount + '）</button>';
+  }
+  html += '<span style="font-size:12px;color:#166534;font-weight:600;cursor:default;" data-tip="問題なし：どのエラー・警告・確認にも当てはまらず、あるべき額や正常な変化で説明がつく生徒。確認して正常と判断した件数です。" onmouseenter="showTip(event,this)" onmouseleave="hideTip()">✅ 問題なし ' + _okStudents.length + '名</span>';
+  html += '<span style="font-size:12px;color:var(--text-muted);cursor:default;" data-tip="対象件数（当月）：今月の請求書CSVに入っている請求行の数です。" onmouseenter="showTip(event,this)" onmouseleave="hideTip()">対象件数（当月）' + okCount + '</span>';
   if (_csv.current && _csv.current.rows && _csv.current.rows[0]) {
-    html += '<div style="margin-left:auto;font-size:12px;color:var(--text-muted);align-self:center;">';
-    html += '請求月：' + _csv.current.rows[0]['請求年'] + '年' + curMonth + '月</div>';
+    html += '<span style="margin-left:auto;font-size:12px;color:var(--text-muted);">請求月：' + _csv.current.rows[0]['請求年'] + '年' + curMonth + '月</span>';
   }
   html += '</div>';
 
   if (_alerts.length === 0) {
     html += '<div class="card"><div style="text-align:center;padding:30px;color:var(--green-dark);font-weight:700;font-size:15px;">✅ アラートなし。全件正常です。</div></div>';
   } else {
-    // フィルターバー
-    html += '<div class="filter-bar">';
-    html += '<button class="filter-btn" id="fbtn-all" onclick="filterAlerts(\'all\')">すべて（' + _alerts.length + '）</button>';
-    html += '<span style="margin-left:12px;font-size:12px;color:#166534;font-weight:600;">✅ 問題なし ' + _okStudents.length + '名</span>';
-    html += '<button class="filter-btn" id="fbtn-error" onclick="filterAlerts(\'error\')">🔴 エラー（' + errorCount + '）</button>';
-    html += '<button class="filter-btn" id="fbtn-warning" onclick="filterAlerts(\'warning\')">🟡 警告（' + warningCount + '）</button>';
-    html += '<button class="filter-btn" id="fbtn-confirm" onclick="filterAlerts(\'confirm\')">🟡 確認（' + confirmCount + '）</button>';
-    html += '</div>';
-
     html += '<div class="card" style="padding:0;overflow:hidden;">';
     html += '<table class="alert-table" id="alert-table">';
     html += '<thead><tr><th>レベル</th><th>ID</th><th>生徒名</th><th>学年</th><th>教室</th><th>請求金額</th><th>差額</th><th>内容</th><th>表示設定</th><th>メモ</th></tr></thead><tbody>';
